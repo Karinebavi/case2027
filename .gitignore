@@ -1,0 +1,16 @@
+# Senha real — NUNCA versionar
+.streamlit/secrets.toml
+
+# Dados reais de inscritos — NUNCA versionar
+*.csv
+!base/exemplo.csv
+*.xlsx
+
+# Base acumulada (dados pessoais) - NUNCA versionar
+dados_base/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
