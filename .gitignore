@@ -14,3 +14,8 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+
+# Regressão com dossiês REAIS (nomes de entidades e achados) — só nesta máquina
+testes/casos_reais.py
+*.pdf
+!dados_exemplo/documentos/*_EXEMPLO.pdf

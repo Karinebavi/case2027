@@ -35,6 +35,10 @@ def _normalizar(bruto):
                          or str(bruto.get("situacao_cadastral") or "")).upper(),
             "municipio": bruto.get("municipio"),
             "uf": bruto.get("uf"),
+            "cep": "".join(c for c in str(bruto.get("cep") or "") if c.isdigit()) or None,
+            "logradouro": " ".join(x for x in [bruto.get("descricao_tipo_de_logradouro"),
+                                               bruto.get("logradouro")] if x) or None,
+            "numero": str(bruto.get("numero") or "").lstrip("0") or None,
             "fonte": "BrasilAPI",
         }
     # publica.cnpj.ws: aninhado
@@ -46,6 +50,9 @@ def _normalizar(bruto):
         "situacao": str(sit or "").upper(),
         "municipio": (est.get("cidade") or {}).get("nome") if isinstance(est.get("cidade"), dict) else None,
         "uf": est.get("estado", {}).get("sigla") if isinstance(est.get("estado"), dict) else None,
+        "cep": "".join(c for c in str(est.get("cep") or "") if c.isdigit()) or None,
+        "logradouro": " ".join(x for x in [est.get("tipo_logradouro"), est.get("logradouro")] if x) or None,
+        "numero": str(est.get("numero") or "").lstrip("0") or None,
         "fonte": "cnpj.ws",
     }
 

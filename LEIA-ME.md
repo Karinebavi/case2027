@@ -55,4 +55,25 @@ Abre em http://localhost:8501. Senha de teste: **case2027**
 - [ ] Passo 2 — Validação
 - [ ] Passo 3–4 — Pontuação e classificação
 - [ ] Passo 5 — Painel e download
-- [ ] Fase 2 — Análise documental por IA
+- [x] Fase 2 — Conferência documental automática (sem IA paga)
+
+## Conferência documental (tela 4)
+
+O mentor sobe Cartão CNPJ, Estatuto(s) e Ata(s). O sistema lê o texto digital
+ou faz OCR (Tesseract em português; a página vira imagem pelo pypdfium2, sem
+poppler) e aplica as regras da *Especificação de conhecimento — Conferência
+Documental LIE* (Trilha Gestão):
+
+- `leitura/texto.py` — texto por página + OCR (e 2ª leitura dos carimbos)
+- `leitura/documento.py` — páginas, artigos numerados, identidade da entidade
+- `leitura/datas.py` — datas numéricas e por extenso, períodos de mandato
+- `leitura/extratores.py` — campos do cartão, estatuto e ata (com artigo e página)
+- `leitura/regras_lie.py` — regras HAB, REG e REP (status OK / ATENÇÃO / PENDÊNCIA / BLOQUEANTE / INFO)
+- `leitura/parecer.py` — parecer no formato do modelo (resultado, tabelas, ajustes)
+
+Parâmetros que dependem do edital (tempo mínimo, recência do cartão, CNAEs
+esportivas…) ficam em `CONFIG_PADRAO` (`leitura/regras_lie.py`).
+
+A regressão com dossiês reais (`testes/casos_reais.py`) fica só na máquina
+(não vai ao GitHub, pois cita entidades reais). Rodar com
+`CASE2027_PDFS="pasta1;pasta2" python testes/casos_reais.py`.

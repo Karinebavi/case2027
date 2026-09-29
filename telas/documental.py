@@ -7,7 +7,7 @@ uma o mentor sobe os três documentos (Cartão CNPJ, Estatuto e Ata) e confere,
 item a item, as regras do edital. Aprovando, segue para a entrevista; excluindo,
 informa o motivo e a próxima do ranking entra automaticamente (repescagem).
 """
-import hashlib
+import json
 
 import streamlit as st
 
@@ -15,6 +15,7 @@ from telas import _calculo, _ui
 from regras import funil
 from regras import processo as proc
 from leitura import conferencia
+from leitura import parecer as parecer_mod
 
 # Cor da sugestão automática (com texto, não só cor — acessibilidade).
 _BADGE = {"verde": "🟢 OK", "amarelo": "🟡 Confira", "vermelho": "🔴 Falta"}
@@ -103,48 +104,80 @@ def _progresso(f, dig):
     return f"{n}/{len(_TODAS)}"
 
 
-def _ler(grupo, arquivo, dig):
-    """Lê o PDF subido (cache por conteúdo), mostra o resumo do documento e
-    devolve o dicionário de critérios sugeridos. Vazio se não houver arquivo."""
-    if arquivo is None:
-        return {}
-    try:
-        dados = arquivo.getvalue()
-    except Exception:
-        return {}
-    ck = f"{dig}:{grupo}:{hashlib.md5(dados).hexdigest()}"
-    cache = st.session_state.setdefault("_conf_cache", {})
-    if ck not in cache:
-        with st.spinner(f"Lendo {grupo}…"):
-            cache[ck] = conferencia.conferir(grupo, dados, dig)
-    res = cache[ck]
-    _mostrar_doc(res["doc"])
-    return res["criterios"]
+_GRUPOS = [("cartao_cnpj", "Cartão CNPJ", False), ("estatuto", "Estatuto", True), ("ata", "Ata(s)", True)]
+_CHAVES_GRUPO = {"Cartão CNPJ": "cartao_cnpj", "Estatuto": "estatuto", "Ata": "ata"}
 
 
-def _mostrar_doc(doc):
-    origem = {"digital": "texto digital", "ocr": "OCR (escaneado)",
-              "escaneada": "escaneado — sem texto", "erro": "não lido"}.get(
-                  doc["origem"], doc["origem"])
-    partes = [f"Leitura: {origem}"]
-    if doc.get("cnpj_bate") is True:
-        partes.append("✓ CNPJ confere com a inscrição")
-    elif doc.get("cnpj_bate") is False:
-        partes.append("✗ CNPJ diverge da inscrição")
-    api = doc.get("api")
-    if api:
-        partes.append(f"Receita: {api.get('situacao') or '—'} · abertura {api.get('data_abertura') or '—'}")
-    st.caption(" · ".join(partes))
-    for aviso in doc.get("avisos", []):
-        st.warning(aviso)
+def _arquivos(dig):
+    """Uploads da organização: {grupo: [(nome, bytes)]}."""
+    st.markdown("**1 · Documentos** — suba os PDFs; o sistema lê (inclusive escaneados) e monta o parecer.")
+    arquivos = {}
+    for (g, rot, multi), col in zip(_GRUPOS, st.columns(3)):
+        with col:
+            up = st.file_uploader(rot + (" — pode mais de um" if multi else ""), type=["pdf"],
+                                  accept_multiple_files=multi, key=f"up_{g}_{dig}")
+        lst = up if multi else ([up] if up else [])
+        arquivos[g] = [(u.name, u.getvalue()) for u in (lst or [])]
+    st.caption("Os arquivos ficam só nesta sessão (não são guardados). No banco fica apenas o resumo do parecer.")
+    return arquivos
 
 
-def _default(check, chave, sug):
-    if chave in check:
-        return bool(check[chave])
-    if sug and sug.get("sugestao") is not None:
-        return bool(sug["sugestao"])
-    return False
+def _parecer_da_sessao(dig, arquivos, r, check):
+    """Mostra o botão de análise e devolve o parecer atual (ou None)."""
+    guardados = st.session_state.setdefault("_pareceres", {})
+    atual = guardados.get(dig)
+    if not any(arquivos.values()):
+        return None
+    ass = conferencia.assinatura(arquivos)
+    if atual and atual["assinatura"] == ass:
+        return atual["parecer"]
+    if atual:
+        st.info("Os arquivos mudaram desde a última análise.")
+    n_pdf = sum(len(v) for v in arquivos.values())
+    if st.button(f"Analisar {n_pdf} documento(s)", type="primary", key=f"analisar_{dig}"):
+        barra = st.progress(0.0, text="Começando a leitura…")
+
+        def _prog(txt, frac):
+            barra.progress(min(max(frac, 0.0), 1.0), text=txt)
+        try:
+            p = conferencia.analisar(arquivos, dig, r["Entidade"], progresso=_prog)
+        except Exception as erro:  # nunca derrubar a tela
+            barra.empty()
+            st.error(f"Não consegui analisar os documentos. Detalhe técnico: {erro}")
+            return None
+        barra.empty()
+        guardados[dig] = {"assinatura": ass, "parecer": p}
+        # pré-marca os itens que o mentor ainda não salvou
+        for chave, sug in conferencia.criterios(p).items():
+            if chave not in check and sug.get("sugestao") is not None:
+                st.session_state[f"chk_{chave}_{dig}"] = bool(sug["sugestao"])
+        st.rerun()
+    else:
+        st.caption("Documentos escaneados levam cerca de 2–3 s por página para ler.")
+    return None
+
+
+_RES_UI = {"APTO": ("success", "✓"), "APTO_COM_AJUSTES": ("warning", "⚠"), "NAO_APTO": ("error", "✗")}
+
+
+def _mostrar_parecer(p, dig):
+    tipo, icone = _RES_UI[p["resultado"]]
+    getattr(st, tipo)(f"**{icone} {parecer_mod.RESULTADO_TXT[p['resultado']]}** — {p['frase']}")
+    if p.get("sem_texto") and not p.get("ocr_disponivel"):
+        st.warning("Há documento escaneado e o OCR não está disponível neste computador: "
+                   + ", ".join(p["sem_texto"]) + ". Confira esses manualmente.")
+    with st.expander("Parecer completo (formato da conferência documental)", expanded=True):
+        texto = parecer_mod.markdown(p)
+        # títulos menores dentro da caixa (o arquivo baixado mantém o formato do modelo)
+        texto = "\n".join("##" + ln if ln.startswith("#") else ln for ln in texto.split("\n"))
+        st.markdown(texto, unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    nome = "".join(ch for ch in p["entidade"] if ch.isalnum() or ch in " -_")[:40].strip().replace(" ", "_")
+    c1.download_button("Baixar parecer (.md)", parecer_mod.markdown(p).encode("utf-8"),
+                       f"parecer_{nome}.md", "text/markdown", key=f"dlmd_{dig}", width="stretch")
+    c2.download_button("Baixar parecer (.json)",
+                       json.dumps(parecer_mod.json_publico(p), ensure_ascii=False, indent=2, default=str).encode("utf-8"),
+                       f"parecer_{nome}.json", "application/json", key=f"dljs_{dig}", width="stretch")
 
 
 def _legenda(sug):
@@ -152,10 +185,8 @@ def _legenda(sug):
         return
     badge = _BADGE.get(sug["cor"], "")
     detalhe = sug.get("detalhe", "")
-    st.caption(f"{badge} · {detalhe}" if detalhe else badge)
-    ev = sug.get("evidencia")
-    if ev:
-        st.caption(f"› trecho: “{ev}”")
+    regra = f"[{sug['regra']}] " if sug.get("regra") else ""
+    st.caption(f"{badge} · {regra}{detalhe}" if detalhe else badge)
 
 
 def _analisar(f, dig):
@@ -174,19 +205,28 @@ def _analisar(f, dig):
             f"Nota {int(r['Nota'])} · posição {int(r['Posição'])} · {r['Cidade']}/{r['UF']} · "
             f"fundação em {r.get('_data_fundacao', '—')} · {r['Anos']} anos (referência para a regra de 1 ano)"
         )
+        salvo = reg.get("doc_parecer")
+        if salvo:
+            st.caption(f"Último parecer salvo ({salvo.get('data')}): "
+                       f"{parecer_mod.RESULTADO_TXT.get(salvo.get('resultado'), '—')} · "
+                       f"{', '.join(salvo.get('arquivos', []))}")
 
+        arquivos = _arquivos(dig)
+        p = _parecer_da_sessao(dig, arquivos, r, check)
+        if p:
+            _mostrar_parecer(p, dig)
+        crit = conferencia.criterios(p) if p else {}
+
+        st.markdown("**2 · Conferência do mentor** — os itens vêm pré-marcados pelo parecer; confirme ou corrija.")
         novos = {}
         for grupo, itens in CRITERIOS.items():
-            st.markdown(f"**{grupo}**")
-            arquivo = st.file_uploader(
-                f"Subir {grupo} (PDF) — o sistema lê e sugere; você confirma. Fica só nesta sessão.",
-                type=["pdf"], key=f"up_{grupo}_{dig}")
-            crit = _ler(grupo, arquivo, dig)  # {} se não houver arquivo
+            st.markdown(f"*{grupo}*")
             for chave, rot in itens:
-                sug = crit.get(chave)
-                novos[chave] = st.checkbox(rot, value=_default(check, chave, sug),
-                                           key=f"chk_{chave}_{dig}")
-                _legenda(sug)
+                k = f"chk_{chave}_{dig}"
+                if k not in st.session_state:
+                    st.session_state[k] = bool(check.get(chave, False))
+                novos[chave] = st.checkbox(rot, key=k)
+                _legenda(crit.get(chave))
 
         conferidos = sum(1 for k, _ in _TODAS if novos.get(k))
         faltando = [rot for k, rot in _TODAS if not novos.get(k)]
@@ -198,6 +238,8 @@ def _analisar(f, dig):
         def _persistir():
             reg["doc_check"] = novos
             reg["doc_obs"] = obs
+            if p:
+                reg["doc_parecer"] = conferencia.resumo_para_salvar(p)
 
         b1, b2, b3 = st.columns(3)
         if b1.button("Salvar conferência", key=f"salvarconf_{dig}"):
@@ -223,7 +265,9 @@ def _analisar(f, dig):
             if faltando:
                 b2.caption(f"Faltam {len(faltando)} item(ns) para poder aprovar.")
             with b3:
-                sugestao = "; ".join(faltando[:2]) if faltando else ""
+                graves = [a["texto"] for a in (p["ajustes"] if p else [])
+                          if a["status"] in ("BLOQUEANTE", "PENDENCIA")]
+                sugestao = "; ".join(graves[:2]) if graves else ("; ".join(faltando[:2]) if faltando else "")
                 motivo = st.text_input("Motivo da exclusão", value=sugestao, key=f"motivo_{dig}",
                                        placeholder="ex.: estatuto sem finalidade esportiva")
                 if st.button("Excluir", key=f"excluir_{dig}"):

@@ -1,18 +1,25 @@
 # -*- coding: utf-8 -*-
 """
-Extração de texto do PDF, com OCR como último recurso.
+Extração de texto do PDF, página a página, com OCR quando a página é imagem.
 
 Ordem: pdfplumber (texto digital, ignora caracteres girados como carimbos) →
-OCR com Tesseract em português só nas páginas sem texto. Se o Tesseract não
-estiver instalado, a página sem texto é marcada como "escaneada" para a tela
-avisar que precisa de conferência manual. Nada trava o app: qualquer erro
-devolve texto vazio com origem "erro".
+OCR com Tesseract em português nas páginas sem texto. A página é convertida
+em imagem pelo pypdfium2 (já vem com o pdfplumber) — não precisa de poppler.
+
+Carimbos e selos de cartório têm letra miúda e ficam espalhados pela folha;
+a leitura normal costuma pular esse texto. Por isso as primeiras e últimas
+folhas escaneadas recebem uma 2ª leitura em "modo texto esparso" (psm 11),
+guardada à parte em "extra" — é onde aparecem "Selo de consulta",
+"Protocolo", "Registro nº"...
+
+Nada trava o app: erro devolve página vazia com origem "erro".
 """
-import glob
 import io
 import os
 
-MIN_CHARS = 50  # abaixo disso a página é tratada como sem texto útil (calibrar)
+MIN_CHARS = 50   # abaixo disso a página é tratada como sem texto útil
+DPI_OCR = 300
+PAGINAS_CARIMBO = 2  # 2ª leitura nas N primeiras e N últimas folhas escaneadas
 
 try:
     import pdfplumber
@@ -20,21 +27,20 @@ except Exception:
     pdfplumber = None
 
 try:
+    import pypdfium2 as pdfium
+except Exception:
+    pdfium = None
+
+try:
     import pytesseract
-    from pdf2image import convert_from_bytes
 except Exception:
     pytesseract = None
-    convert_from_bytes = None
 
-# Caminhos padrão de instalação no Windows — assim o OCR "funciona sozinho"
-# depois de instalar, sem precisar mexer no PATH.
+# Caminhos padrão no Windows — o OCR "funciona sozinho" depois de instalar.
 _TESSERACT_PADRAO = [
     r"C:\Program Files\Tesseract-OCR\tesseract.exe",
     r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
 ]
-_POPPLER_PADRAO = glob.glob(r"C:\Program Files\poppler*\Library\bin") + \
-    glob.glob(r"C:\poppler*\Library\bin") + \
-    glob.glob(r"C:\Program Files\poppler*\bin")
 
 
 def _config_tesseract():
@@ -52,19 +58,12 @@ def _config_tesseract():
         pass
 
 
-def _poppler_path():
-    for p in _POPPLER_PADRAO:
-        if os.path.isdir(p):
-            return p
-    return None
-
-
 _config_tesseract()
 
 
 def ocr_disponivel():
-    """True se o Tesseract está instalado e acessível (para PDFs escaneados)."""
-    if pytesseract is None:
+    """True se o Tesseract (com português) e o renderizador estão prontos."""
+    if pytesseract is None or pdfium is None:
         return False
     try:
         pytesseract.get_tesseract_version()
@@ -90,34 +89,47 @@ def _bytes(arquivo):
     return b""
 
 
-def _ocr_pagina(pdf_bytes, indice):
-    """Roda OCR numa página (0-based). Devolve (texto, confiança 0..1)."""
-    if not ocr_disponivel() or convert_from_bytes is None:
-        return "", 0.0
-    try:
-        extra = {"poppler_path": _poppler_path()} if _poppler_path() else {}
-        imgs = convert_from_bytes(pdf_bytes, dpi=300,
-                                  first_page=indice + 1, last_page=indice + 1, **extra)
-        if not imgs:
-            return "", 0.0
-        d = pytesseract.image_to_data(imgs[0], lang="por",
-                                      output_type=pytesseract.Output.DICT)
-        palavras = [w for w in d["text"] if w and w.strip()]
-        confs = [float(c) for c in d["conf"] if str(c) not in ("-1", "") and float(c) >= 0]
-        conf = (sum(confs) / len(confs) / 100.0) if confs else 0.0
-        return " ".join(palavras), conf
-    except Exception:
-        return "", 0.0
+MAX_LADO_PX = 3600  # ~A4 a 300 dpi; evita imagem gigante em PDF com "página" enorme
 
 
-def extrair_paginas(arquivo):
+def _imagem(pdf_doc, indice, dpi=DPI_OCR):
+    pagina = pdf_doc[indice]
+    larg, alt = pagina.get_size()  # em pontos (1/72")
+    escala = min(dpi / 72, MAX_LADO_PX / max(larg, alt, 1))
+    return pagina.render(scale=escala).to_pil().convert("L")
+
+
+def _ocr(img, psm=None):
+    """OCR de uma imagem. Devolve (texto com quebras de linha, confiança 0..1)."""
+    config = f"--psm {psm}" if psm else ""
+    d = pytesseract.image_to_data(img, lang="por", config=config,
+                                  output_type=pytesseract.Output.DICT)
+    linhas, atual, chave = [], [], None
+    for i, palavra in enumerate(d["text"]):
+        k = (d["block_num"][i], d["par_num"][i], d["line_num"][i])
+        if k != chave and atual:
+            linhas.append(" ".join(atual))
+            atual = []
+        chave = k
+        if palavra and palavra.strip():
+            atual.append(palavra.strip())
+    if atual:
+        linhas.append(" ".join(atual))
+    confs = [float(c) for c in d["conf"] if str(c) not in ("-1", "") and float(c) >= 0]
+    conf = (sum(confs) / len(confs) / 100.0) if confs else 0.0
+    return "\n".join(linhas), conf
+
+
+def extrair_paginas(arquivo, progresso=None):
     """
-    Devolve uma lista de páginas: {"pagina", "texto", "origem", "conf"}.
-    origem ∈ {"digital", "ocr", "escaneada", "erro"}.
+    Lista de páginas: {"pagina", "texto", "extra", "origem", "conf"}.
+    origem ∈ {"digital", "ocr", "escaneada", "erro"}; "extra" = 2ª leitura
+    (carimbos) quando feita. progresso(feitas, total) a cada página de OCR.
     """
     pdf_bytes = _bytes(arquivo)
+    erro = [{"pagina": 1, "texto": "", "extra": "", "origem": "erro", "conf": 0.0}]
     if not pdf_bytes or pdfplumber is None:
-        return [{"pagina": 1, "texto": "", "origem": "erro", "conf": 0.0}]
+        return erro
 
     paginas = []
     try:
@@ -128,48 +140,51 @@ def extrair_paginas(arquivo):
                     txt = (limpa.extract_text() or "").strip()
                 except Exception:
                     txt = (pg.extract_text() or "").strip()
-
-                if len(txt) >= MIN_CHARS:
-                    paginas.append({"pagina": i + 1, "texto": txt,
-                                    "origem": "digital", "conf": 1.0})
-                else:
-                    txt_ocr, conf = _ocr_pagina(pdf_bytes, i)
-                    if txt_ocr.strip():
-                        paginas.append({"pagina": i + 1, "texto": txt_ocr,
-                                        "origem": "ocr", "conf": conf})
-                    else:
-                        paginas.append({"pagina": i + 1, "texto": txt,
-                                        "origem": "escaneada", "conf": 0.0})
+                digital = len(txt) >= MIN_CHARS
+                paginas.append({"pagina": i + 1, "texto": txt, "extra": "",
+                                "origem": "digital" if digital else "escaneada",
+                                "conf": 1.0 if digital else 0.0})
     except Exception:
-        return [{"pagina": 1, "texto": "", "origem": "erro", "conf": 0.0}]
-    return paginas or [{"pagina": 1, "texto": "", "origem": "erro", "conf": 0.0}]
+        return erro
+    if not paginas:
+        return erro
+
+    faltam = [p for p in paginas if p["origem"] == "escaneada"]
+    if faltam and ocr_disponivel():
+        try:
+            doc = pdfium.PdfDocument(pdf_bytes)
+        except Exception:
+            doc = None
+        if doc is not None:
+            idx = [p["pagina"] - 1 for p in faltam]
+            carimbo = set(idx[:PAGINAS_CARIMBO] + idx[-PAGINAS_CARIMBO:])
+            for n, p in enumerate(faltam):
+                if progresso:
+                    progresso(n, len(faltam))
+                i = p["pagina"] - 1
+                try:
+                    img = _imagem(doc, i)
+                    txt, conf = _ocr(img)
+                    if txt.strip():
+                        p.update(texto=txt, origem="ocr", conf=conf)
+                    if i in carimbo:
+                        p["extra"], _ = _ocr(img, psm=11)
+                except Exception:
+                    continue
+            if progresso:
+                progresso(len(faltam), len(faltam))
+    return paginas
 
 
-def extrair(arquivo):
-    """
-    Resumo pronto para a conferência:
-      {"texto", "origem", "conf", "paginas", "escaneado", "ocr_usado", "ocr_disp"}
-    - texto: todo o texto concatenado
-    - origem: "digital", "ocr", "escaneada" (nenhuma página teve texto) ou "erro"
-    - conf: menor confiança entre as páginas com conteúdo (0..1)
-    """
-    pgs = extrair_paginas(arquivo)
-    texto = "\n".join(p["texto"] for p in pgs if p["texto"]).strip()
-    origens = {p["origem"] for p in pgs}
-    ocr_usado = "ocr" in origens
-    if texto:
-        confs = [p["conf"] for p in pgs if p["texto"]]
-        conf = min(confs) if confs else 0.0
-        origem = "ocr" if ocr_usado and "digital" not in origens else "digital"
-    else:
-        conf = 0.0
-        origem = "escaneada" if "escaneada" in origens else "erro"
-    return {
-        "texto": texto,
-        "origem": origem,
-        "conf": conf,
-        "paginas": len(pgs),
-        "escaneado": (origem == "escaneada"),
-        "ocr_usado": ocr_usado,
-        "ocr_disp": ocr_disponivel(),
-    }
+def origem_geral(paginas):
+    """Como o documento foi lido: digital, ocr, misto, escaneada (sem texto) ou erro."""
+    origens = {p["origem"] for p in paginas}
+    if origens == {"erro"}:
+        return "erro"
+    if "ocr" in origens:
+        return "ocr" if "digital" not in origens else "misto"
+    if origens == {"digital"}:
+        return "digital"
+    if "digital" in origens:
+        return "misto"
+    return "escaneada"
