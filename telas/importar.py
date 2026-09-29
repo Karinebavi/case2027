@@ -8,7 +8,9 @@ duplicar entidades (o CNPJ é a chave). Você pode baixar a base e zerá-la.
 """
 import streamlit as st
 
-from regras import leitura, mapeamento, normalizacao, base_dados
+import pandas as pd
+
+from regras import leitura, mapeamento, normalizacao, base_dados, nuvem
 from base import campos as campos_def
 from telas import _ui
 
@@ -37,6 +39,29 @@ def mostrar():
 
     st.divider()
     _painel_base(st.session_state["dados"])
+    _historico()
+
+
+def _historico():
+    """Trilha de auditoria: quem fez o quê e quando (só com a nuvem ativa)."""
+    if not nuvem.ativo():
+        return
+    with st.expander("Histórico de alterações (quem fez o quê)"):
+        try:
+            linhas = nuvem.historico(300)
+        except Exception as erro:
+            st.warning(f"Não consegui ler o histórico agora ({erro}).")
+            return
+        if not linhas:
+            st.caption("Nenhuma alteração registrada ainda.")
+            return
+        df = pd.DataFrame(linhas)
+        df["quando"] = (pd.to_datetime(df["quando"], utc=True)
+                        .dt.tz_convert("America/Sao_Paulo").dt.strftime("%d/%m/%Y %H:%M"))
+        df["detalhe"] = df["detalhe"].astype(str)
+        st.dataframe(df.rename(columns={"quando": "Quando", "quem": "Quem",
+                                        "acao": "Ação", "detalhe": "Detalhe"}),
+                     width="stretch", hide_index=True, height=300)
 
 
 def _processar_upload(arquivo):
@@ -76,6 +101,9 @@ def _processar_upload(arquivo):
         base = base_dados.carregar()
         final, cnpjs_novos, n_atualizados = base_dados.acumular(base, novos_norm)
         base_dados.salvar(final)
+        nuvem.registrar("importar", {
+            "arquivo": getattr(arquivo, "name", ""), "linhas_no_arquivo": len(novo),
+            "novas": len(cnpjs_novos), "atualizadas": n_atualizados, "total_base": len(final)})
         st.session_state["dados"] = final
         st.session_state["mapa"] = normalizacao.mapa_identidade()
         st.session_state["mapa_ok"] = len(final) > 0
@@ -127,6 +155,8 @@ def _painel_base(base):
         z1, z2, _ = st.columns([1, 1, 3])
         if z1.button("Sim, zerar tudo", type="primary"):
             base_dados.limpar()
+            nuvem.registrar("zerar_base", {"inscricoes_apagadas": len(base),
+                                           "copia_de_seguranca": nuvem.ativo()})
             for k in ["dados", "mapa", "mapa_ok", "novos_cnpjs", "_confirmar_zerar",
                       "fase2_ms", "fase2_cnpjs"]:
                 st.session_state.pop(k, None)

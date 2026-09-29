@@ -7,40 +7,73 @@ que fica guardada em dados_base/inscricoes.csv. O CNPJ é a chave: se a mesma
 entidade aparecer de novo, a versão mais recente (pela Data de envio)
 substitui a antiga — a base não duplica, só cresce com as novas.
 
-Observação: os dados ficam nesta máquina/pasta (LGPD). Na nuvem, use os
-botões de baixar/subir a base para levá-la de um lugar a outro.
+Onde fica guardada: com o Supabase configurado nos Secrets, no banco da
+nuvem (chave "base/inscricoes.csv"); sem ele, nesta máquina/pasta.
 """
+import io
 import os
+from datetime import datetime
+
 import pandas as pd
 
-from regras import normalizacao
+from regras import normalizacao, nuvem
 from regras.memoria import so_digitos
 from regras.pontuacao import parse_data
 
 PASTA = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dados_base")
 ARQUIVO = os.path.join(PASTA, "inscricoes.csv")
+CHAVE_NUVEM = "base/inscricoes.csv"
 
 
 def caminho():
     return ARQUIVO
 
 
+def _vazia():
+    return pd.DataFrame({chave: [] for chave in normalizacao.chaves()})
+
+
 def carregar():
     """Lê a base acumulada (ou uma tabela vazia com as colunas canônicas)."""
+    if nuvem.ativo():
+        try:
+            texto = nuvem.ler(CHAVE_NUVEM)
+        except Exception as erro:
+            nuvem.parar_com_erro(erro)
+        if not texto:
+            return _vazia()
+        return pd.read_csv(io.StringIO(texto), dtype=str, keep_default_na=False)
     if os.path.exists(ARQUIVO):
         try:
             return pd.read_csv(ARQUIVO, dtype=str, keep_default_na=False)
         except Exception:
             pass
-    return pd.DataFrame({chave: [] for chave in normalizacao.chaves()})
+    return _vazia()
 
 
 def salvar(df):
+    if nuvem.ativo():
+        try:
+            nuvem.gravar({CHAVE_NUVEM: df.to_csv(index=False)})
+        except Exception as erro:
+            nuvem.parar_com_erro(erro)
+        return
     os.makedirs(PASTA, exist_ok=True)
     df.to_csv(ARQUIVO, index=False, encoding="utf-8")
 
 
 def limpar():
+    if nuvem.ativo():
+        # antes de zerar, guarda uma cópia de segurança (dá pra recuperar)
+        try:
+            atual = nuvem.ler(CHAVE_NUVEM)
+            if atual:
+                carimbo = datetime.now().strftime("%Y%m%d-%H%M%S")
+                nuvem.gravar({f"backup/inscricoes-{carimbo}.csv": atual})
+            nuvem.apagar(CHAVE_NUVEM)
+        except Exception as erro:
+            nuvem.parar_com_erro(erro)
+        return
     if os.path.exists(ARQUIVO):
         os.remove(ARQUIVO)
 

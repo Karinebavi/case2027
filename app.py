@@ -12,9 +12,9 @@ tela não quebra a outra, e as regras podem ser reaproveitadas depois.
 """
 import streamlit as st
 
-from regras import auth
+from regras import auth, nuvem
 from telas import (login, importar, resultado, analises, documental,
-                   entrevistas, fichas, dashboard)
+                   entrevistas, fichas, dashboard, _calculo)
 import tema
 
 st.set_page_config(page_title="CASE 2027", layout="wide")
@@ -24,6 +24,11 @@ tema.aplicar()
 if not auth.esta_logado():
     login.mostrar()
     st.stop()
+
+# ---------- dados: base de inscrições e estado do processo ----------
+_calculo.reler_se_preciso()
+if "dados" not in st.session_state:
+    importar._carregar_base_para_sessao()
 
 # ---------- navegação (as telas da Fase 1) ----------
 with st.sidebar:
@@ -36,6 +41,10 @@ with st.sidebar:
         label_visibility="collapsed",
     )
     st.divider()
+    if nuvem.ativo():
+        st.caption(f"☁️ Dados salvos na nuvem · {nuvem.quem()}")
+    else:
+        st.caption("💻 Dados salvos neste computador")
     if st.button("Sair"):
         auth.sair()
         st.rerun()
