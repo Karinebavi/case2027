@@ -32,6 +32,10 @@ def _config():
         chave = str(st.secrets.get("supabase_key", "")).strip()
     except Exception:
         return None
+    # aceita a URL copiada da tela "Data API" (termina em /rest/v1)
+    for sufixo in ("/rest/v1", "/rest"):
+        if url.endswith(sufixo):
+            url = url[: -len(sufixo)].rstrip("/")
     if url and chave:
         return url, chave
     return None
