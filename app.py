@@ -10,6 +10,8 @@ Cada tela mora no seu próprio arquivo, dentro da pasta telas/.
 A lógica (regras) fica separada, dentro de regras/. Assim, mexer numa
 tela não quebra a outra, e as regras podem ser reaproveitadas depois.
 """
+import os
+
 import streamlit as st
 
 from regras import auth, nuvem
@@ -19,6 +21,14 @@ import tema
 
 st.set_page_config(page_title="CASE 2027", layout="wide")
 tema.aplicar()
+
+# Logo oficial do CASE no topo da barra lateral (e canto superior)
+_LOGO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "logo-case.png")
+if os.path.exists(_LOGO):
+    try:
+        st.logo(_LOGO, size="large")
+    except Exception:
+        pass
 
 # ---------- portão de login ----------
 if not auth.esta_logado():
@@ -32,7 +42,6 @@ if "dados" not in st.session_state:
 
 # ---------- navegação (as telas da Fase 1) ----------
 with st.sidebar:
-    st.markdown("### CASE 2027")
     st.caption("Seleção 2027 · uso interno")
     escolha = st.radio(
         "Navegação",
