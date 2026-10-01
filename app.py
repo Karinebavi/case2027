@@ -42,9 +42,9 @@ with st.sidebar:
     )
     st.divider()
     if nuvem.ativo():
-        st.caption(f"☁️ Dados salvos na nuvem · {nuvem.quem()}")
+        st.caption(f"Dados salvos na nuvem · {nuvem.quem()}")
     else:
-        st.caption("💻 Dados salvos neste computador")
+        st.caption("Dados salvos neste computador")
     if st.button("Sair"):
         auth.sair()
         st.rerun()

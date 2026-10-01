@@ -18,7 +18,7 @@ from leitura import conferencia
 from leitura import parecer as parecer_mod
 
 # Cor da sugestão automática (com texto, não só cor — acessibilidade).
-_BADGE = {"verde": "🟢 OK", "amarelo": "🟡 Confira", "vermelho": "🔴 Falta"}
+_BADGE = {"verde": "OK", "amarelo": "Confira", "vermelho": "Falta"}
 
 # Conferência documental — (chave, rótulo). Agrupada por documento.
 CRITERIOS = {
@@ -143,7 +143,11 @@ def _parecer_da_sessao(dig, arquivos, r, check):
             p = conferencia.analisar(arquivos, dig, r["Entidade"], progresso=_prog)
         except Exception as erro:  # nunca derrubar a tela
             barra.empty()
-            st.error(f"Não consegui analisar os documentos. Detalhe técnico: {erro}")
+            st.error("Não consegui ler esse(s) PDF(s). Pode ser um arquivo protegido por "
+                     "senha, corrompido ou uma digitalização muito ruim. Tente abrir o PDF "
+                     "e usar **Salvar como** para gerar um novo, ou confira manualmente.")
+            with st.expander("Detalhe técnico (para suporte)"):
+                st.code(str(erro))
             return None
         barra.empty()
         guardados[dig] = {"assinatura": ass, "parecer": p}
@@ -157,23 +161,55 @@ def _parecer_da_sessao(dig, arquivos, r, check):
     return None
 
 
-_RES_UI = {"APTO": ("success", "✓"), "APTO_COM_AJUSTES": ("warning", "⚠"), "NAO_APTO": ("error", "✗")}
+_RES_UI = {"APTO": "success", "APTO_COM_AJUSTES": "warning", "NAO_APTO": "error"}
+
+# Severidade dos ajustes, em ordem e em linguagem de gente.
+_SEV = [("BLOQUEANTE", "Impede a aprovação"),
+        ("PENDENCIA", "Falta providenciar"),
+        ("ATENCAO", "Conferir com atenção")]
 
 
 def _mostrar_parecer(p, dig):
-    tipo, icone = _RES_UI[p["resultado"]]
-    getattr(st, tipo)(f"**{icone} {parecer_mod.RESULTADO_TXT[p['resultado']]}** — {p['frase']}")
+    tipo = _RES_UI[p["resultado"]]
+    getattr(st, tipo)(f"**{parecer_mod.RESULTADO_TXT[p['resultado']]}** — {p['frase']}")
+
+    # Visão rápida: o que chegou e o que falta.
+    receb = [d.get("arquivo", "") for d in p.get("documentos_recebidos", [])]
+    falt = p.get("documentos_faltantes", [])
+    cols = st.columns(2)
+    cols[0].caption("**Recebidos:** " + (", ".join(receb) if receb else "—"))
+    cols[1].caption("**Faltando:** " + (", ".join(falt) if falt else "nenhum"))
+
     if p.get("sem_texto") and not p.get("ocr_disponivel"):
-        st.warning("Há documento escaneado e o OCR não está disponível neste computador: "
+        st.warning("Documento escaneado e o leitor de imagem (OCR) não está disponível aqui: "
                    + ", ".join(p["sem_texto"]) + ". Confira esses manualmente.")
-    with st.expander("Parecer completo (formato da conferência documental)", expanded=True):
+
+    # Pontos agrupados por gravidade, em linguagem simples (código da regra discreto).
+    ajustes = p.get("ajustes", [])
+    for cod, titulo in _SEV:
+        itens = [a for a in ajustes if a.get("status") == cod]
+        if not itens:
+            continue
+        st.markdown(f"**{titulo}**")
+        for a in itens:
+            reg = f" <span style='opacity:.45;font-size:.85em'>({a['regra']})</span>" if a.get("regra") else ""
+            st.markdown(f"- {a.get('texto', '')}{reg}", unsafe_allow_html=True)
+
+    infos = [a for a in ajustes if a.get("status") == "INFO"]
+    if infos:
+        with st.expander("Observações (opcional)"):
+            for a in infos:
+                st.markdown(f"- {a.get('texto', '')}")
+
+    with st.expander("Parecer completo (formato oficial da conferência)"):
         texto = parecer_mod.markdown(p)
-        # títulos menores dentro da caixa (o arquivo baixado mantém o formato do modelo)
         texto = "\n".join("##" + ln if ln.startswith("#") else ln for ln in texto.split("\n"))
         st.markdown(texto, unsafe_allow_html=True)
+
     c1, c2 = st.columns(2)
     nome = "".join(ch for ch in p["entidade"] if ch.isalnum() or ch in " -_")[:40].strip().replace(" ", "_")
-    c1.download_button("Baixar parecer (.md)", parecer_mod.markdown(p).encode("utf-8"),
+    # BOM (﻿) para o Word/Bloco de Notas do Windows abrir com acentos corretos.
+    c1.download_button("Baixar parecer (.md)", ("﻿" + parecer_mod.markdown(p)).encode("utf-8"),
                        f"parecer_{nome}.md", "text/markdown", key=f"dlmd_{dig}", width="stretch")
     c2.download_button("Baixar parecer (.json)",
                        json.dumps(parecer_mod.json_publico(p), ensure_ascii=False, indent=2, default=str).encode("utf-8"),

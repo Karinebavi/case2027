@@ -29,7 +29,8 @@ from leitura.extratores import cargo_canonico
 OK, ATENCAO, ATENCAO_MENOR, PENDENCIA, BLOQUEANTE, INFO = (
     "OK", "ATENCAO", "ATENCAO_MENOR", "PENDENCIA", "BLOQUEANTE", "INFO")
 PRIORIDADE = {BLOQUEANTE: 0, PENDENCIA: 1, ATENCAO: 2, ATENCAO_MENOR: 3, INFO: 4, OK: 5}
-ICONE = {OK: "✓", ATENCAO: "⚠", ATENCAO_MENOR: "⚠", PENDENCIA: "✗", BLOQUEANTE: "⛔", INFO: "ℹ"}
+ICONE = {OK: "[OK]", ATENCAO: "[atenção]", ATENCAO_MENOR: "[atenção]",
+         PENDENCIA: "[pendência]", BLOQUEANTE: "[bloqueante]", INFO: "[info]"}
 ROTULO = {OK: "Conforme", ATENCAO: "Atenção", ATENCAO_MENOR: "Atenção menor",
           PENDENCIA: "Pendência", BLOQUEANTE: "Bloqueante", INFO: "Informação"}
 
@@ -204,9 +205,9 @@ def bloco_habilitacao(cart, doc_cart, est, doc_est, api, ref, cfg):
         if fins:
             arts = sorted({f["artigo"] for f in fins}, key=lambda a: [int(x) for x in re.findall(r"\d+", a)][:1])
             out.append(achado("HAB-05", B, "Finalidade esportiva", OK,
-                              "Esporte previsto no objeto/finalidades: " + "; ".join(arts[:2]) +
+                              "Esporte previsto no objeto/finalidades nos artigos: " + "; ".join(arts) +
                               ". Confirme que o esporte é FIM da entidade (não só meio para outro fim).",
-                              [f["ev"] for f in fins[:3]]))
+                              [f["ev"] for f in fins[:5]]))
         elif est["finalidade"]:
             f = est["finalidade"][0]
             out.append(achado("HAB-05", B, "Finalidade esportiva", ATENCAO,
@@ -224,21 +225,7 @@ def bloco_habilitacao(cart, doc_cart, est, doc_est, api, ref, cfg):
                               f"{r['artigo']}: a finalidade cita atividades 'entre seus associados'.",
                               r["ev"], "Garantir acesso público no desenho do projeto."))
 
-    # HAB-06 — CNAE × finalidade
-    if cart and cart["cnae_principal"]:
-        todos = [cart["cnae_principal"]] + cart["cnaes_secundarias"]
-        esportivas = [f"{c} – {d}" for c, d in todos if c in cfg["cnaes_esportivas"]]
-        if esportivas:
-            out.append(achado("HAB-06", B, "CNAE × finalidade", OK,
-                              "CNAE esportiva: " + "; ".join(esportivas) + ".", cart["ev"].get("cnae")))
-        else:
-            p = cart["cnae_principal"]
-            out.append(achado("HAB-06", B, "CNAE × finalidade", ATENCAO,
-                              f"Nenhuma CNAE esportiva (principal {p[0]} – {p[1]}; "
-                              f"{len(cart['cnaes_secundarias'])} secundária(s), nenhuma de esporte).",
-                              cart["ev"].get("cnae"),
-                              "Incluir CNAE esportiva na Receita ou justificar pela finalidade do estatuto "
-                              "(confirmar lista de CNAEs aceitas no edital)."))
+    # (HAB-06 CNAE × finalidade — removido a pedido: não é exigência desta fase.)
 
     # HAB-07 — endereço CNPJ × estatuto
     if cart and est and est.get("sede") and cart.get("endereco"):
@@ -288,14 +275,15 @@ def _registro_status(reg, doc, peca, rid, B):
                       reg["ev_indicio"], "Conferir visualmente o carimbo e anotar nº do registro, livro e data.")
     if doc.lido_por_ocr or doc.sem_texto:
         return achado(rid, B, f"{peca} registrad{'a' if peca == 'Ata' else 'o'}", PENDENCIA,
-                      "Não localizei carimbo, selo ou etiqueta de registro (documento escaneado, lido por OCR). "
-                      "Se de fato não houver registro, é bloqueante.",
+                      "Não localizei o carimbo/selo de registro na leitura automática (documento escaneado). "
+                      "O registro costuma ficar no VERSO ou numa página à parte que muitas vezes não é enviada.",
                       Evidencia(doc.arquivo, doc.n_paginas, doc.paginas[-1]["texto"][-200:]),
-                      f"Conferir visualmente; se não houver, enviar a versão registrada/averbada d{'a' if peca == 'Ata' else 'o'} {peca.lower()}.")
-    return achado(rid, B, f"{peca} registrad{'a' if peca == 'Ata' else 'o'}", BLOQUEANTE,
-                  "O documento (texto digital) não tem registro/averbação de cartório.",
+                      f"Conferir o verso e as demais folhas; se realmente não houver, pedir a versão registrada/averbada d{'a' if peca == 'Ata' else 'o'} {peca.lower()}.")
+    return achado(rid, B, f"{peca} registrad{'a' if peca == 'Ata' else 'o'}", PENDENCIA,
+                  "Não localizei registro/averbação de cartório no documento. O selo de registro costuma "
+                  "ficar no VERSO ou numa folha à parte que muitas vezes não é enviada junto.",
                   Evidencia(doc.arquivo, doc.n_paginas, doc.paginas[-1]["texto"][-200:]),
-                  f"Enviar a versão registrada/averbada d{'a' if peca == 'Ata' else 'o'} {peca.lower()}.")
+                  f"Conferir o verso e as demais folhas; se realmente não houver, pedir a versão registrada/averbada d{'a' if peca == 'Ata' else 'o'} {peca.lower()}.")
 
 
 def _mandato(ata, est, ref):
@@ -384,9 +372,11 @@ def bloco_registro(est, doc_est, outros_est, ata, doc_ata, atas_extra, ref, cfg)
                                                   f"protocolo {d['protocolo']}" if d.get("protocolo") else ""] if x) + ".",
                                   reg["ev"]))
             else:
-                out.append(achado("REG-04", B, "Etiqueta/certidão do registro", ATENCAO_MENOR,
-                                  "Há registro, mas não localizei data e selo na etiqueta.", reg["ev"],
-                                  "Pedir certidão do registro ao cartório."))
+                out.append(achado("REG-04", B, "Etiqueta/certidão do registro", ATENCAO,
+                                  "Atenção redobrada: há marca de registro, mas NÃO localizei a data e o selo "
+                                  "na etiqueta — confira o verso e as demais páginas (o selo costuma ficar lá).",
+                                  reg["ev"], "Conferir o selo/data no verso; se não houver, pedir certidão do "
+                                  "registro ao cartório."))
         # REG-15 — certidão de alterações (peça não solicitada no CASE)
         quando = d.get("data_registro") or d.get("data_protocolo")
         out.append(achado("REG-15", B, "Certidão de alterações", INFO,
@@ -394,13 +384,7 @@ def bloco_registro(est, doc_est, outros_est, ata, doc_ata, atas_extra, ref, cfg)
                           + (f"; registro do estatuto em {quando}." if quando else "."),
                           reg["ev"] or reg["ev_indicio"] or Evidencia(doc_est.arquivo, 1, doc_est.texto[:120]),
                           "Recomendável emitir se o estatuto for antigo ou houver dúvida sobre alterações posteriores."))
-        # mandato vitalício (governança — achado 30 do catálogo)
-        if est.get("vitalicio"):
-            v = est["vitalicio"]
-            out.append(achado("REG-08", B, "Mandato vitalício no estatuto", ATENCAO,
-                              f"{v['artigo']} prevê mandato vitalício/por tempo indeterminado.", v["ev"],
-                              "Confirmar se o edital/norma exige alternância de mandato (ex.: requisitos de "
-                              "governança do art. 18-A da Lei 9.615/98)."))
+        # (REG-08 mandato vitalício — removido a pedido.)
 
     # ------- ATA
     if ata:
@@ -435,14 +419,7 @@ def bloco_registro(est, doc_est, outros_est, ata, doc_ata, atas_extra, ref, cfg)
                               ata["destituicao"],
                               "Avaliar o impacto conforme o edital (ex.: prestação de contas pendente, "
                               "regularidade da nova diretoria)."))
-        if ata.get("vacancia") and ata["tipo"] in ("posse", "eleicao"):
-            out.append(achado("REG-12", B, "Cargos vagos na diretoria", ATENCAO,
-                              "A ata registra cargos da diretoria/conselho que ficaram vagos.", ata["vacancia"],
-                              "Confirmar se o estatuto permite funcionar com os cargos vagos e quando serão preenchidos."))
-        mdisp = doc_ata.primeiro(r"dispensada a convocacao")
-        if mdisp:
-            out.append(achado("REG-10", B, "Convocação da assembleia", INFO,
-                              "A ata registra que a convocação prévia foi dispensada.", doc_ata.ev(mdisp.start(), 20, 160)))
+        # (REG-12 cargos vagos e REG-10 convocação dispensada — removidos a pedido.)
         # inconsistência de datas (eleição citada depois da posse)
         out += _datas_incoerentes(ata, doc_ata, B)
 
@@ -521,68 +498,7 @@ def _datas_incoerentes(ata, doc_ata, B):
 
 def _regras_cruzadas(est, doc_est, ata, doc_ata, B):
     out = []
-    # REG-09 — rito da nomeação
-    el = est.get("elege_diretoria")
-    if el:
-        assembleia_ata = bool(doc_ata.primeiro(r"assembleia geral|assembleia\s+(?:geral\s+)?(?:ordinaria|extraordinaria)"))
-        if el["assembleia"] and assembleia_ata:
-            out.append(achado("REG-09", B, "Rito da eleição", OK,
-                              f"Estatuto ({el['artigo']}): a Assembleia Geral elege a diretoria; a ata é de Assembleia Geral.",
-                              [el["ev"], ata["ev"].get("data")]))
-        elif el["assembleia"] and not assembleia_ata:
-            out.append(achado("REG-09", B, "Rito da eleição", ATENCAO,
-                              f"Estatuto ({el['artigo']}) atribui a eleição à Assembleia Geral, mas a ata não é de Assembleia Geral.",
-                              [el["ev"]], "Confirmar se a diretoria foi eleita pelo órgão previsto no estatuto."))
-    # REG-10 — prazo de convocação
-    cv = est.get("convocacao_dias")
-    if cv and cv.get("dias"):
-        if ata["data_edital"] and ata["data_assembleia"]:
-            dias = (ata["data_assembleia"] - ata["data_edital"]).days
-            st = OK if dias >= cv["dias"] else ATENCAO
-            out.append(achado("REG-10", B, "Prazo de convocação", st,
-                              f"Edital de {D.br(ata['data_edital'])} e AG em {D.br(ata['data_assembleia'])}: {dias} dias. "
-                              f"Estatuto ({cv['artigo']}): mínimo de {cv['dias']} dias.",
-                              [ata["ev"].get("edital"), cv["ev"]],
-                              "" if st == OK else "Registrar e corrigir na próxima AG (não bloqueia se a ata foi registrada)."))
-        else:
-            out.append(achado("REG-10", B, "Prazo de convocação", INFO,
-                              f"Estatuto ({cv['artigo']}) exige {cv['dias']} dias de antecedência; a ata não informa "
-                              "a data do edital de convocação.", cv["ev"],
-                              "Se o edital de convocação for pedido, conferir a data dele."))
-    # REG-11 — intervalo entre convocações
-    sc = est.get("segunda_convocacao_min")
-    if sc and ata.get("horarios"):
-        iv = ata["horarios"]["intervalo_min"]
-        st = OK if iv >= sc["min"] else ATENCAO_MENOR
-        out.append(achado("REG-11", B, "Intervalo entre convocações", st,
-                          f"Ata: {iv} min entre 1ª e 2ª convocação · Estatuto ({sc['artigo']}): {sc['min']} min.",
-                          [ata["horarios"]["ev"], sc["ev"]], "" if st == OK else "Corrigir na próxima AG."))
-    # REG-12 — composição × estatuto (+ acúmulo de cargos)
-    comp = est.get("composicao")
-    diretoria = [e for e in ata["eleitos"] if cargo_canonico(e["cargo"]) not in ("Conselho Fiscal", "Conselho de Administração")]
-    if comp and comp["cargos"] and diretoria:
-        eleitos_c = {cargo_canonico(e["cargo"]) for e in diretoria}
-        prev = set(comp["cargos"]) - {"Conselho Fiscal"}
-        falta = sorted(prev - eleitos_c)
-        sobra = sorted(eleitos_c - prev)
-        txt = f"Estatuto ({comp['artigo']}): {', '.join(sorted(prev))}. Eleitos na ata: {', '.join(sorted(eleitos_c))}."
-        st = OK if not falta and not sobra else ATENCAO
-        if falta:
-            txt += f" Sem eleito na ata: {', '.join(falta)}."
-        if sobra:
-            txt += f" Cargo não previsto nesse artigo: {', '.join(sobra)}."
-        out.append(achado("REG-12", B, "Composição da diretoria × estatuto", st, txt,
-                          [comp["ev"], diretoria[0]["ev"]],
-                          "" if st == OK else "Conferir se a composição eleita segue o estatuto (e se a leitura por OCR pegou todos os cargos)."))
-    nomes = {}
-    for e in ata["eleitos"]:
-        nomes.setdefault(sem_acento(e["nome"]), []).append(e)
-    for lst in nomes.values():
-        cargos = {cargo_canonico(x["cargo"]) for x in lst}
-        if len(cargos) > 1:
-            out.append(achado("REG-12", B, "Acúmulo de cargos", ATENCAO,
-                              f"{lst[0]['nome']} aparece em mais de um cargo: {', '.join(sorted(cargos))}.",
-                              [x["ev"] for x in lst], "Checar se o estatuto permite acumular esses cargos."))
+    # (REG-09 rito, REG-10/REG-11 convocação e REG-12 composição/acúmulo — removidos a pedido.)
     # REG-13 — cadeia de registro
     de, da = est["registro"]["dados"], ata["registro"]["dados"]
     chaves = [("matricula", "matrícula"), ("registro_numero", "registro")]
@@ -605,10 +521,12 @@ def _regras_cruzadas(est, doc_est, ata, doc_ata, B):
     if len(avs) >= 2:
         buracos = [n for n in range(min(avs), max(avs)) if n not in avs]
         if buracos:
-            out.append(achado("REG-14", B, "Averbações faltantes", ATENCAO,
-                              f"Recebidas Av.{', Av.'.join(map(str, avs))}; não recebidas: Av.{', Av.'.join(map(str, buracos))}.",
+            out.append(achado("REG-14", B, "Averbações faltantes", BLOQUEANTE,
+                              f"Recebidas Av.{', Av.'.join(map(str, avs))}; FALTAM: Av.{', Av.'.join(map(str, buracos))}. "
+                              "A sequência de averbações precisa estar completa.",
                               [est["registro"]["ev"] or ata["registro"]["ev"]],
-                              "Pedir certidão de inteiro teor ou breve relato para garantir que não há outra ata de diretoria."))
+                              "Enviar as averbações faltantes (certidão de inteiro teor/breve relato). "
+                              "Sem a sequência completa, a entidade é rejeitada."))
     # REG-16 — parentesco na diretoria
     out += _parentesco(ata, B)
     # REG-17 — referência a artigo do estatuto
@@ -682,50 +600,7 @@ def _parentesco(ata, B):
 def bloco_representante(est, doc_est, ata, doc_ata, ref):
     B = "representante"
     out = []
-    presidente = None
-    if ata and ata["tipo"] in ("posse", "eleicao"):
-        presidente = next((e for e in ata["eleitos"] if cargo_canonico(e["cargo"]) == "Presidente"), None)
-    if est:
-        reps = est["representacao"]
-        if reps:
-            cargos = []
-            for r in reps:
-                c = cargo_canonico(r["cargo"]) if r["cargo"] else "—"
-                cargos.append(f"{c} ({r['artigo']}{', em conjunto' if r['conjunto'] else ''})")
-            tem_pres = any(cargo_canonico(r["cargo"]) == "Presidente" for r in reps)
-            conj = any(r["conjunto"] for r in reps)
-            if tem_pres and not conj:
-                st, rec = OK, ""
-            elif conj:
-                st, rec = ATENCAO, "Representação em conjunto: os demais signatários previstos também precisam assinar."
-            else:
-                st, rec = ATENCAO, ("O estatuto não atribui a representação expressamente ao Presidente — "
-                                    "confirmar quem assinará pela entidade.")
-            out.append(achado("REP-04", B, "Poder de representar/assinar", st,
-                              "Representação da entidade: " + "; ".join(dict.fromkeys(cargos)) + ".",
-                              [r["ev"] for r in reps[:3]], rec))
-        elif not doc_est.sem_texto:
-            out.append(achado("REP-04", B, "Poder de representar/assinar", PENDENCIA,
-                              "Não localizei no estatuto quem representa a entidade (ativa e passivamente, "
-                              "judicial e extrajudicialmente)" + (" — lido por OCR, confira visualmente." if doc_est.lido_por_ocr else "."),
-                              Evidencia(doc_est.arquivo, 1, doc_est.texto[:160]),
-                              "Indicar o artigo do estatuto que dá poderes de representação."))
-    if presidente:
-        extra = []
-        if presidente.get("cpf"):
-            extra.append("CPF informado na ata")
-        if presidente.get("rg"):
-            extra.append(f"RG {presidente['rg']}")
-        out.append(achado("REP-05", B, "Dirigente vigente (presidente)", INFO,
-                          f"Presidente empossado(a): {presidente['nome']} ({_rotulo_ata(ata)})"
-                          + (f"; {', '.join(extra)}" if extra else "") +
-                          ". Quem assinar pela entidade deve ser esta pessoa (ou quem o estatuto autorizar).",
-                          presidente["ev"]))
-    elif ata and ata["tipo"] in ("posse", "eleicao"):
-        out.append(achado("REP-05", B, "Dirigente vigente (presidente)", ATENCAO,
-                          "Não identifiquei o nome do presidente eleito na leitura da ata.",
-                          ata["ev"].get("data") or Evidencia(doc_ata.arquivo, 1, doc_ata.texto[:160]),
-                          "Conferir o presidente eleito na ata."))
+    # (REP-04 poder de representar/assinar e REP-05 presidente empossado — removidos a pedido.)
     if est or ata:
         doc = doc_est or doc_ata
         out.append(achado("REP-06", B, "Responsável na Receita (QSA)", INFO,

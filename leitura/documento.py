@@ -220,6 +220,14 @@ def classificar(doc):
     tipo, top = max(pont.items(), key=lambda kv: kv[1])
     if top < 3:
         return "irrelevante", pont
+    # Sinal DECISIVO de ata: narrativa de assembleia (data por extenso, fórmulas de
+    # encerramento). Um estatuto nunca diz "aos X dias do mês… lavrei a presente".
+    # Resolve a ata que começa citando "estatuto social" (convocação/reforma na AG).
+    narrativa = ("lavrei a presente" in plano or "nada mais havendo" in plano
+                 or re.search(r"\baos?\s+[a-z0-9]+\s+dias?\s+do\s+mes\b", plano) is not None)
+    if narrativa and ("assembleia" in plano or "reuniao" in plano) \
+            and "comprovante de inscricao" not in plano[:600]:
+        return "ata", pont
     # o TÍTULO decide quando a ata traz o estatuto junto (ata de AGE + estatuto anexo)
     for p in doc.paginas[:2]:
         titulo = re.sub(r"\s+", " ", sem_acento(p["texto"]))

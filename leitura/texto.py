@@ -99,9 +99,62 @@ def _imagem(pdf_doc, indice, dpi=DPI_OCR):
     return pagina.render(scale=escala).to_pil().convert("L")
 
 
+def _orientar(img):
+    """Corrige a orientação da página (0/90/180/270) usando a detecção do
+    Tesseract (OSD), ANTES de ler — resolve páginas escaneadas de lado/de
+    cabeça para baixo. Best-effort: se a detecção falhar, devolve a original."""
+    try:
+        osd = pytesseract.image_to_osd(img, config=f"--dpi {DPI_OCR}",
+                                       output_type=pytesseract.Output.DICT)
+        ang = int(osd.get("rotate", 0)) % 360
+        if ang:
+            return img.rotate(-ang, expand=True)
+    except Exception:
+        pass
+    return img
+
+
+def _binarizar(img):
+    """Scan de baixo contraste: o Tesseract às vezes não separa letra do fundo
+    sozinho e devolve página vazia. Normaliza o contraste e força preto-e-branco
+    para recuperar a leitura (foi o que destravou atas escaneadas claras)."""
+    from PIL import ImageOps
+    return ImageOps.autocontrast(img).point(lambda x: 0 if x < 140 else 255, "L")
+
+
+def _recuperar(img, txt, conf):
+    """A leitura normal veio curta. Tenta recuperar, da mais barata à mais cara:
+    1) binariza (resolve o scan claro/baixo contraste, causa comum de 'não leu
+    nada'); 2) se ainda curto, testa as 4 rotações — na imagem e na binarizada.
+    Só roda em páginas-problema, então não pesa nas boas.
+    Devolve (imagem usada, texto, confiança)."""
+    melhor = (img, txt, conf)
+    bin_img = _binarizar(img)
+    try:
+        t, c = _ocr(bin_img)
+        if len(t.strip()) > len(melhor[1].strip()):
+            melhor = (bin_img, t, c)
+    except Exception:
+        pass
+    if len(melhor[1].strip()) < MIN_CHARS:
+        for base in (img, bin_img):
+            for ang in (90, 180, 270):
+                try:
+                    cand = base.rotate(-ang, expand=True)
+                    t, c = _ocr(cand)
+                except Exception:
+                    continue
+                if len(t.strip()) > len(melhor[1].strip()):
+                    melhor = (cand, t, c)
+    return melhor
+
+
 def _ocr(img, psm=None):
     """OCR de uma imagem. Devolve (texto com quebras de linha, confiança 0..1)."""
-    config = f"--psm {psm}" if psm else ""
+    partes = [f"--dpi {DPI_OCR}"]   # evita o erro "resolução 0 dpi" e melhora a escala
+    if psm:
+        partes.append(f"--psm {psm}")
+    config = " ".join(partes)
     d = pytesseract.image_to_data(img, lang="por", config=config,
                                   output_type=pytesseract.Output.DICT)
     linhas, atual, chave = [], [], None
@@ -163,8 +216,10 @@ def extrair_paginas(arquivo, progresso=None):
                     progresso(n, len(faltam))
                 i = p["pagina"] - 1
                 try:
-                    img = _imagem(doc, i)
+                    img = _orientar(_imagem(doc, i))       # corrige página girada
                     txt, conf = _ocr(img)
+                    if len(txt.strip()) < MIN_CHARS:        # ainda ruim: binariza e/ou gira
+                        img, txt, conf = _recuperar(img, txt, conf)
                     if txt.strip():
                         p.update(texto=txt, origem="ocr", conf=conf)
                     if i in carimbo:

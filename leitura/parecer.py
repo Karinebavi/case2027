@@ -77,7 +77,12 @@ def montar(documentos, cnpj_inscricao=None, nome_inscricao=None, data_ref=None, 
     # 1) tipo e duplicados
     vistos = {}
     for d in documentos:
-        d.tipo, _ = classificar(d) if not d.sem_texto else (d.grupo or None, None)
+        tipo, _ = classificar(d) if not d.sem_texto else (d.grupo or None, None)
+        # Resgate: se a classificação por conteúdo não reconheceu o tipo
+        # ('irrelevante', comum em escaneado com OCR ruim), respeitar o campo
+        # onde o mentor subiu o PDF. Não atrapalha a separação de arquivos
+        # misturados, que depende da classificação quando ela acerta um tipo real.
+        d.tipo = tipo if tipo and tipo != "irrelevante" else (d.grupo or tipo)
         d.hash = d.hash or hashlib.md5(d.texto.encode("utf-8")).hexdigest()
         if d.hash in vistos and not d.sem_texto:
             d.status = "duplicado"
@@ -254,7 +259,7 @@ def _ev_txt(ev):
 
 def markdown(p):
     L = [f"## Conferência documental — {p['entidade']}" + (f" / {p['projeto']}" if p.get("projeto") else ""),
-         f"CNPJ {p['cnpj']} · Data: {p['data_referencia']} · Legenda: ✓ conforme · ⚠ atenção · ✗ pendência",
+         f"CNPJ {p['cnpj']} · Data: {p['data_referencia']} · Legenda: [OK] conforme · [atenção] atenção · [pendência] pendência",
          f"**Resultado: {RESULTADO_TXT[p['resultado']]}** — {p['frase']}", ""]
     L.append("### Documentos recebidos")
     L.append("| Arquivo | Tipo | Leitura | Situação |")

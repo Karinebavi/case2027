@@ -19,3 +19,8 @@ venv/
 testes/casos_reais.py
 *.pdf
 !dados_exemplo/documentos/*_EXEMPLO.pdf
+
+# Ferramentas de skill do Claude (nao fazem parte do app)
+.agents/
+.claude/
+skills-lock.json
