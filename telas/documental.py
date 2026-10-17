@@ -187,8 +187,8 @@ def _parecer_da_sessao(dig, arquivos, r, check):
     if atual:
         st.info("Os arquivos mudaram desde a última análise.")
     teste = bool(st.session_state.get(f"_teste_{dig}"))
-    cnpj_param = None if teste else dig          # no teste, usa o CNPJ do próprio exemplo
-    nome_param = "Organização de exemplo (teste)" if teste else r["Entidade"]
+    cnpj_param = None if teste else dig          # no teste, usa o CNPJ/nome do próprio exemplo
+    nome_param = None if teste else r["Entidade"]
     n_pdf = sum(len(v) for v in arquivos.values())
     rotulo = "Rodar análise de exemplo" if teste else f"Analisar {n_pdf} documento(s)"
     if st.button(rotulo, type="primary", icon=":material/play_arrow:", key=f"analisar_{dig}"):
@@ -221,51 +221,39 @@ def _parecer_da_sessao(dig, arquivos, r, check):
 _RES_UI = {"APTO": "success", "APTO_COM_AJUSTES": "warning", "NAO_APTO": "error"}
 
 # Severidade dos ajustes, em ordem e em linguagem de gente.
-_SEV = [("BLOQUEANTE", "Impede a aprovação"),
-        ("PENDENCIA", "Falta providenciar"),
-        ("ATENCAO", "Conferir com atenção")]
+_SEV = [(("BLOQUEANTE",), "Impede a aprovação"),
+        (("PENDENCIA",), "Falta providenciar"),
+        (("ATENCAO", "ATENCAO_MENOR"), "Conferir com atenção")]
 
 
-# Painéis das 3 regras centrais do edital (cor por status, ícone Material).
-_BADGE_STATUS = {
-    "OK": ("Conforme", "green", "check_circle"),
-    "ATENCAO": ("Conferir", "orange", "warning"),
-    "ATENCAO_MENOR": ("Conferir", "orange", "warning"),
-    "PENDENCIA": ("Pendência", "red", "error"),
-    "BLOQUEANTE": ("Impeditivo", "red", "block"),
-    "INFO": ("Informação", "violet", "info"),
+# Painéis das 3 regras centrais — mesma fonte do checklist (conferencia.criterios),
+# para o card e o checklist NUNCA se contradizerem.
+_COR_BADGE = {
+    "verde": ("Conforme", "green", "check_circle"),
+    "amarelo": ("Confira", "orange", "warning"),
+    "vermelho": ("Pendência", "red", "error"),
 }
 
 
-def _achado(p, *rids):
-    for rid in rids:
-        for a in p["achados"]:
-            if a["regra_id"] == rid:
-                return a
-    return None
-
-
-def _painel_regra(container, icone, titulo, achado, vazio):
+def _painel_regra(container, icone, titulo, cri):
     with container.container(border=True):
         st.markdown(f":material/{icone}: **{titulo}**")
-        if achado:
-            rot, cor, ic = _BADGE_STATUS.get(achado["status"], ("—", "gray", "help"))
+        if cri:
+            rot, cor, ic = _COR_BADGE.get(cri.get("cor"), ("Sem dado", "gray", "help"))
             st.badge(rot, icon=f":material/{ic}:", color=cor)
-            st.caption(achado["constatacao"])
+            st.caption(cri.get("detalhe") or "")
         else:
             st.badge("Sem dado", icon=":material/help:", color="gray")
-            st.caption(vazio)
+            st.caption("Documento não recebido ou não lido.")
 
 
 def _paineis_regras(p):
+    crit = conferencia.criterios(p)
     st.markdown("**Verificação das regras do edital**")
     c1, c2, c3 = st.columns(3)
-    _painel_regra(c1, "sports_soccer", "Finalidade esportiva (FIM)", _achado(p, "HAB-05"),
-                  "Estatuto não recebido ou sem finalidade esportiva localizada.")
-    _painel_regra(c2, "event_available", "Tempo de funcionamento", _achado(p, "HAB-01"),
-                  "Sem cartão CNPJ/estatuto para calcular o tempo.")
-    _painel_regra(c3, "verified", "Mandato / ata de posse", _achado(p, "REG-06", "REG-05"),
-                  "Ata de posse/eleição não recebida.")
+    _painel_regra(c1, "sports_soccer", "Finalidade esportiva (FIM)", crit.get("est_finalidade"))
+    _painel_regra(c2, "event_available", "Tempo de funcionamento", crit.get("cnpj_1ano"))
+    _painel_regra(c3, "verified", "Mandato / ata de posse", crit.get("ata_vigencia"))
 
 
 def _mostrar_parecer(p, dig):
@@ -287,14 +275,13 @@ def _mostrar_parecer(p, dig):
 
     # Pontos agrupados por gravidade, em linguagem simples (código da regra discreto).
     ajustes = p.get("ajustes", [])
-    for cod, titulo in _SEV:
-        itens = [a for a in ajustes if a.get("status") == cod]
+    for cods, titulo in _SEV:
+        itens = [a for a in ajustes if a.get("status") in cods]
         if not itens:
             continue
         st.markdown(f"**{titulo}**")
         for a in itens:
-            reg = f" <span style='opacity:.45;font-size:.85em'>({a['regra']})</span>" if a.get("regra") else ""
-            st.markdown(f"- {a.get('texto', '')}{reg}", unsafe_allow_html=True)
+            st.markdown(f"- {a.get('texto', '')}")
 
     infos = [a for a in ajustes if a.get("status") == "INFO"]
     if infos:
@@ -322,8 +309,7 @@ def _legenda(sug):
         return
     badge = _BADGE.get(sug["cor"], "")
     detalhe = sug.get("detalhe", "")
-    regra = f"[{sug['regra']}] " if sug.get("regra") else ""
-    st.caption(f"{badge} · {regra}{detalhe}" if detalhe else badge)
+    st.caption(f"{badge} · {detalhe}" if detalhe else badge)
 
 
 def _analisar(f, dig):
