@@ -7,7 +7,9 @@ uma o mentor sobe os três documentos (Cartão CNPJ, Estatuto e Ata) e confere,
 item a item, as regras do edital. Aprovando, segue para a entrevista; excluindo,
 informa o motivo e a próxima do ranking entra automaticamente (repescagem).
 """
+import base64
 import json
+import os
 
 import streamlit as st
 
@@ -16,6 +18,20 @@ from regras import funil
 from regras import processo as proc
 from leitura import conferencia
 from leitura import parecer as parecer_mod
+
+# Documentos de exemplo para o "modo de teste" (experimentar a análise sem docs reais).
+_EXEMPLOS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                             "dados_exemplo", "documentos")
+_EXEMPLOS = {"cartao_cnpj": "cartao_cnpj_EXEMPLO.pdf",
+             "estatuto": "estatuto_EXEMPLO.pdf", "ata": "ata_EXEMPLO.pdf"}
+
+
+def _carregar_exemplos():
+    out = {}
+    for g, nome in _EXEMPLOS.items():
+        caminho = os.path.join(_EXEMPLOS_DIR, nome)
+        out[g] = [(nome, open(caminho, "rb").read())] if os.path.exists(caminho) else []
+    return out
 
 # Cor da sugestão automática (com texto, não só cor — acessibilidade).
 _BADGE = {"verde": "OK", "amarelo": "Confira", "vermelho": "Falta"}
@@ -43,7 +59,8 @@ _LABEL = {k: rot for k, rot in _TODAS}
 
 def mostrar():
     st.title("4 · Documental (Fase 2)")
-    _ui.cabecalho()
+    _ui.cabecalho(4, "Suba os documentos de cada organização; o sistema lê e monta o parecer. "
+                     "Você confere e aprova ou exclui (com motivo) — a próxima entra automaticamente.")
 
     dados = st.session_state.get("dados")
     if dados is None or not st.session_state.get("mapa_ok"):
@@ -118,8 +135,44 @@ def _arquivos(dig):
                                   accept_multiple_files=multi, key=f"up_{g}_{dig}")
         lst = up if multi else ([up] if up else [])
         arquivos[g] = [(u.name, u.getvalue()) for u in (lst or [])]
+
+    # Modo de teste: experimentar a análise com documentos de exemplo, sem subir nada.
+    teste = st.session_state.get(f"_teste_{dig}")
+    if not any(arquivos.values()) and teste:
+        arquivos = teste
+        st.caption(":material/science: Modo de teste — usando documentos de exemplo.")
+    b = st.columns([1, 1, 2])
+    if b[0].button("Testar com exemplos", icon=":material/science:", key=f"teste_{dig}"):
+        st.session_state[f"_teste_{dig}"] = _carregar_exemplos()
+        st.session_state.get("_pareceres", {}).pop(dig, None)
+        st.rerun()
+    if teste and b[1].button("Limpar teste", icon=":material/close:", key=f"limpateste_{dig}"):
+        st.session_state.pop(f"_teste_{dig}", None)
+        st.session_state.get("_pareceres", {}).pop(dig, None)
+        st.rerun()
     st.caption("Os arquivos ficam só nesta sessão (não são guardados). No banco fica apenas o resumo do parecer.")
     return arquivos
+
+
+def _visualizar_pdfs(arquivos, dig):
+    """Visualizador do PDF lado a lado com a conferência (o mentor vê o documento)."""
+    todos = [(g, n, b) for g, lst in arquivos.items() for n, b in lst]
+    if not todos:
+        return
+    with st.expander(f":material/picture_as_pdf: Ver documento(s) ({len(todos)})"):
+        nomes = [n for _, n, _ in todos]
+        escolha = st.selectbox("Documento para visualizar", nomes, key=f"verpdf_{dig}",
+                               label_visibility="collapsed")
+        dados = next((b for _, n, b in todos if n == escolha), None)
+        if dados:
+            if len(dados) > 12_000_000:
+                st.caption("Documento muito grande para pré-visualizar aqui — baixe para abrir.")
+            else:
+                b64 = base64.b64encode(dados).decode()
+                st.markdown(
+                    f'<iframe src="data:application/pdf;base64,{b64}" width="100%" height="560" '
+                    f'style="border:1px solid #E7E3F3;border-radius:10px"></iframe>',
+                    unsafe_allow_html=True)
 
 
 def _parecer_da_sessao(dig, arquivos, r, check):
@@ -133,14 +186,18 @@ def _parecer_da_sessao(dig, arquivos, r, check):
         return atual["parecer"]
     if atual:
         st.info("Os arquivos mudaram desde a última análise.")
+    teste = bool(st.session_state.get(f"_teste_{dig}"))
+    cnpj_param = None if teste else dig          # no teste, usa o CNPJ do próprio exemplo
+    nome_param = "Organização de exemplo (teste)" if teste else r["Entidade"]
     n_pdf = sum(len(v) for v in arquivos.values())
-    if st.button(f"Analisar {n_pdf} documento(s)", type="primary", key=f"analisar_{dig}"):
+    rotulo = "Rodar análise de exemplo" if teste else f"Analisar {n_pdf} documento(s)"
+    if st.button(rotulo, type="primary", icon=":material/play_arrow:", key=f"analisar_{dig}"):
         barra = st.progress(0.0, text="Começando a leitura…")
 
         def _prog(txt, frac):
             barra.progress(min(max(frac, 0.0), 1.0), text=txt)
         try:
-            p = conferencia.analisar(arquivos, dig, r["Entidade"], progresso=_prog)
+            p = conferencia.analisar(arquivos, cnpj_param, nome_param, progresso=_prog)
         except Exception as erro:  # nunca derrubar a tela
             barra.empty()
             st.error("Não consegui ler esse(s) PDF(s). Pode ser um arquivo protegido por "
@@ -169,9 +226,53 @@ _SEV = [("BLOQUEANTE", "Impede a aprovação"),
         ("ATENCAO", "Conferir com atenção")]
 
 
+# Painéis das 3 regras centrais do edital (cor por status, ícone Material).
+_BADGE_STATUS = {
+    "OK": ("Conforme", "green", "check_circle"),
+    "ATENCAO": ("Conferir", "orange", "warning"),
+    "ATENCAO_MENOR": ("Conferir", "orange", "warning"),
+    "PENDENCIA": ("Pendência", "red", "error"),
+    "BLOQUEANTE": ("Impeditivo", "red", "block"),
+    "INFO": ("Informação", "violet", "info"),
+}
+
+
+def _achado(p, *rids):
+    for rid in rids:
+        for a in p["achados"]:
+            if a["regra_id"] == rid:
+                return a
+    return None
+
+
+def _painel_regra(container, icone, titulo, achado, vazio):
+    with container.container(border=True):
+        st.markdown(f":material/{icone}: **{titulo}**")
+        if achado:
+            rot, cor, ic = _BADGE_STATUS.get(achado["status"], ("—", "gray", "help"))
+            st.badge(rot, icon=f":material/{ic}:", color=cor)
+            st.caption(achado["constatacao"])
+        else:
+            st.badge("Sem dado", icon=":material/help:", color="gray")
+            st.caption(vazio)
+
+
+def _paineis_regras(p):
+    st.markdown("**Verificação das regras do edital**")
+    c1, c2, c3 = st.columns(3)
+    _painel_regra(c1, "sports_soccer", "Finalidade esportiva (FIM)", _achado(p, "HAB-05"),
+                  "Estatuto não recebido ou sem finalidade esportiva localizada.")
+    _painel_regra(c2, "event_available", "Tempo de funcionamento", _achado(p, "HAB-01"),
+                  "Sem cartão CNPJ/estatuto para calcular o tempo.")
+    _painel_regra(c3, "verified", "Mandato / ata de posse", _achado(p, "REG-06", "REG-05"),
+                  "Ata de posse/eleição não recebida.")
+
+
 def _mostrar_parecer(p, dig):
     tipo = _RES_UI[p["resultado"]]
     getattr(st, tipo)(f"**{parecer_mod.RESULTADO_TXT[p['resultado']]}** — {p['frase']}")
+
+    _paineis_regras(p)
 
     # Visão rápida: o que chegou e o que falta.
     receb = [d.get("arquivo", "") for d in p.get("documentos_recebidos", [])]
@@ -248,6 +349,7 @@ def _analisar(f, dig):
                        f"{', '.join(salvo.get('arquivos', []))}")
 
         arquivos = _arquivos(dig)
+        _visualizar_pdfs(arquivos, dig)
         p = _parecer_da_sessao(dig, arquivos, r, check)
         if p:
             _mostrar_parecer(p, dig)

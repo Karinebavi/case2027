@@ -13,7 +13,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from telas import _calculo, _ui
-from regras import pontuacao, geo
+from regras import pontuacao, geo, feedback
 from regras.memoria import so_digitos
 
 AZUL = "#1F4E79"
@@ -50,7 +50,8 @@ def _contagem(serie, ordem=None, remover_vazio=True):
 
 def mostrar():
     st.title("7 · Dashboard")
-    _ui.cabecalho()
+    _ui.cabecalho(7, "Acompanhe a visão geral das inscrições em gráficos: situação, notas, "
+                     "regiões, mapa do Brasil, dias e o perfil das OSCs.")
 
     dados = st.session_state.get("dados")
     if dados is None or not st.session_state.get("mapa_ok"):
@@ -96,6 +97,21 @@ def mostrar():
     _perfil_oscs(work)
     st.divider()
     _alertas(work)
+    st.divider()
+    _feedback_equipe()
+
+
+def _feedback_equipe():
+    itens = feedback.listar(50)
+    st.subheader("Feedback da equipe")
+    with st.expander(f"Ver feedback recebido ({len(itens)})"):
+        if not itens:
+            st.caption("Ainda não há feedback. Os mentores enviam pela caixa na barra lateral.")
+            return
+        for it in itens:
+            cab = " · ".join([x for x in [it.get("data", ""), it.get("autor", ""), it.get("tela", "")] if x])
+            st.markdown(f"**{cab}**" if cab else "**Feedback**")
+            st.write(it.get("texto", ""))
 
 
 def _kpis(work):

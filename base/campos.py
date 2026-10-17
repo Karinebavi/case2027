@@ -24,6 +24,16 @@ CAMPOS = [
     ("Identificação", "beneficiarios", "Número de beneficiários", False,
      ["beneficiários", "beneficiarios", "consegue atender"]),
 
+    ("Contato", "responsavel", "Nome do responsável", False,
+     ["nome completo do responsável", "nome completo do responsavel", "responsável pelo preenchimento"]),
+    ("Contato", "email", "E-mail do responsável", False,
+     ["e-mail do responsável", "e-mail do responsavel", "email do responsável", "email do responsavel"]),
+    ("Contato", "whatsapp", "WhatsApp", False, ["whatsapp", "celular"]),
+    ("Contato", "email_institucional", "E-mail institucional", False,
+     ["e-mail institucional", "email institucional", "institucional"]),
+    ("Contato", "presidente", "Nome do presidente", False,
+     ["nome completo do presidente", "presidente"]),
+
     ("Eliminatórias (Sim/Não)", "estatuto", "Estatuto com finalidade esportiva", True, ["estatuto"]),
     ("Eliminatórias (Sim/Não)", "computador", "Computador com câmera e microfone", True, ["computador", "câmera", "camera"]),
     ("Eliminatórias (Sim/Não)", "internet", "Internet para as reuniões", True, ["internet"]),

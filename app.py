@@ -14,7 +14,7 @@ import os
 
 import streamlit as st
 
-from regras import auth, nuvem
+from regras import auth, nuvem, feedback
 from telas import (login, importar, resultado, analises, documental,
                    entrevistas, fichas, dashboard, _calculo)
 import tema
@@ -57,6 +57,19 @@ with st.sidebar:
     if st.button("Sair"):
         auth.sair()
         st.rerun()
+
+    with st.expander("Enviar feedback"):
+        if st.session_state.pop("_fb_ok", False):
+            st.success("Enviado. Obrigado!")
+            st.session_state["fb_texto"] = ""
+        st.text_area("Feedback", key="fb_texto", height=80, label_visibility="collapsed",
+                     placeholder="O que confundiu ou pode melhorar nesta tela?")
+        if st.button("Enviar feedback", key="fb_btn"):
+            if feedback.registrar(st.session_state.get("fb_texto", ""), tela=escolha):
+                st.session_state["_fb_ok"] = True
+                st.rerun()
+            else:
+                st.caption("Escreva algo antes de enviar.")
 
 # mostra a tela escolhida
 if escolha.startswith("1"):

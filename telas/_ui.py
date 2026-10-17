@@ -5,6 +5,21 @@ import streamlit as st
 BLOCOS = ["Elaboração", "Execução", "Equipe", "Receita", "Infra adm.", "Infra esp.", "Digital"]
 COLS_B = ["b1", "b2", "b3", "b4", "b5", "b6", "b7"]
 
+# As 7 etapas do processo, na ordem das abas (para o guia "passo a passo").
+FASES = ["Importar", "Resultado", "Análises", "Documental", "Entrevistas", "Fichas", "Dashboard"]
+
+
+def _stepper(atual):
+    partes = ['<div class="case-steps">']
+    for i, nome in enumerate(FASES, 1):
+        classe = "done" if i < atual else ("cur" if i == atual else "todo")
+        partes.append(f'<div class="step {classe}"><div class="bola">{i}</div>'
+                      f'<div class="rot">{nome}</div></div>')
+        if i < len(FASES):
+            partes.append('<div class="liga"></div>')
+    partes.append("</div>")
+    st.markdown("".join(partes), unsafe_allow_html=True)
+
 
 def rotulos(df):
     """Rótulos únicos por entidade -> (rotulo_por_cnpj, cnpj_por_rotulo).
@@ -24,8 +39,12 @@ def rotulos(df):
     return rotulo_por_cnpj, cnpj_por_rotulo
 
 
-def cabecalho():
-    """Faixa institucional com o contexto atual (ciclo, base, vagas)."""
+def cabecalho(passo=None, oque=None):
+    """Faixa institucional + guia passo a passo.
+
+    passo: número da etapa (1..7) para destacar no stepper.
+    oque:  uma frase curta dizendo o que a pessoa faz nesta tela.
+    """
     dados = st.session_state.get("dados")
     n = len(dados) if dados is not None else 0
     vagas = st.session_state.get("vagas", 10)
@@ -38,6 +57,11 @@ def cabecalho():
         f'<div class="c">{ctx}</div></div>',
         unsafe_allow_html=True,
     )
+    if passo:
+        _stepper(passo)
+    if oque:
+        st.markdown(f'<div class="case-guia"><b>O que fazer aqui:</b> {oque}</div>',
+                    unsafe_allow_html=True)
 
 
 def ficha(df, entidade):

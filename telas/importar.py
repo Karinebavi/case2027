@@ -29,7 +29,8 @@ def mostrar():
         _carregar_base_para_sessao()
 
     st.title("1 · Importar")
-    _ui.cabecalho()
+    _ui.cabecalho(1, "Suba o CSV das inscrições exportado do Wix. A cada arquivo, as inscrições "
+                     "somam à base — sem duplicar (o CNPJ é a chave).")
 
     st.caption("Suba o CSV exportado do Wix. As inscrições somam à base já existente.")
     arquivo = st.file_uploader("Arquivo CSV das inscrições", type=["csv"], key="upload_csv")

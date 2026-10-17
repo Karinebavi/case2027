@@ -28,7 +28,8 @@ OPCOES_CHECK = ["(não avaliado)", "OK", "ALERTA"]
 
 def mostrar():
     st.title("5 · Entrevistas (Fase 3)")
-    _ui.cabecalho()
+    _ui.cabecalho(5, "Aloque o mentor, siga o roteiro da entrevista, marque se a organização "
+                     "compareceu e aprove ou exclua.")
 
     dados = st.session_state.get("dados")
     if dados is None or not st.session_state.get("mapa_ok"):

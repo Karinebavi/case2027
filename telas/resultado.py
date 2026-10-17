@@ -24,7 +24,8 @@ CORES_SITUACAO = {
 
 def mostrar():
     st.title("2 · Resultado")
-    _ui.cabecalho()
+    _ui.cabecalho(2, "Veja a pontuação de todas as organizações. As melhores (padrão 30) seguem "
+                     "para a Fase 2; defina as vagas e, se quiser, baixe a planilha.")
 
     dados = st.session_state.get("dados")
     if dados is None or not st.session_state.get("mapa_ok"):

@@ -16,10 +16,15 @@ Nada trava o app: erro devolve página vazia com origem "erro".
 """
 import io
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 MIN_CHARS = 50   # abaixo disso a página é tratada como sem texto útil
 DPI_OCR = 300
 PAGINAS_CARIMBO = 2  # 2ª leitura nas N primeiras e N últimas folhas escaneadas
+# OCR em paralelo: cada página roda num processo do Tesseract. O gargalo é o
+# Tesseract (subprocesso), então threads dão paralelismo real entre núcleos.
+# Limitado para não estourar a memória no plano grátis da nuvem.
+_WORKERS = max(1, min(3, (os.cpu_count() or 2)))
 
 try:
     import pdfplumber
@@ -129,7 +134,17 @@ def _recuperar(img, txt, conf):
     Só roda em páginas-problema, então não pesa nas boas.
     Devolve (imagem usada, texto, confiança)."""
     melhor = (img, txt, conf)
-    bin_img = _binarizar(img)
+    # 0) orientação detectada pelo Tesseract (página de lado / de cabeça p/ baixo)
+    ori = _orientar(img)
+    if ori is not img:
+        try:
+            t, c = _ocr(ori)
+            if len(t.strip()) > len(melhor[1].strip()):
+                melhor = (ori, t, c)
+        except Exception:
+            pass
+    base_img = melhor[0]
+    bin_img = _binarizar(base_img)
     try:
         t, c = _ocr(bin_img)
         if len(t.strip()) > len(melhor[1].strip()):
@@ -137,7 +152,7 @@ def _recuperar(img, txt, conf):
     except Exception:
         pass
     if len(melhor[1].strip()) < MIN_CHARS:
-        for base in (img, bin_img):
+        for base in (base_img, bin_img):
             for ang in (90, 180, 270):
                 try:
                     cand = base.rotate(-ang, expand=True)
@@ -147,6 +162,29 @@ def _recuperar(img, txt, conf):
                 if len(t.strip()) > len(melhor[1].strip()):
                     melhor = (cand, t, c)
     return melhor
+
+
+def _ocr_uma_pagina(pdf_bytes, i, fazer_carimbo):
+    """Renderiza e lê UMA página (tarefa para rodar em paralelo). Cada thread
+    abre seu próprio documento pypdfium (seguro entre threads)."""
+    try:
+        doc = pdfium.PdfDocument(pdf_bytes)
+    except Exception:
+        return i, "", 0.0, ""
+    try:
+        img = _imagem(doc, i)
+        txt, conf = _ocr(img)
+        if len(txt.strip()) < MIN_CHARS:      # ainda ruim: orienta, binariza e/ou gira
+            img, txt, conf = _recuperar(img, txt, conf)
+        extra = _ocr(img, psm=11)[0] if fazer_carimbo else ""
+        return i, txt, conf, extra
+    except Exception:
+        return i, "", 0.0, ""
+    finally:
+        try:
+            doc.close()
+        except Exception:
+            pass
 
 
 def _ocr(img, psm=None):
@@ -204,30 +242,30 @@ def extrair_paginas(arquivo, progresso=None):
 
     faltam = [p for p in paginas if p["origem"] == "escaneada"]
     if faltam and ocr_disponivel():
+        idx = [p["pagina"] - 1 for p in faltam]
+        carimbo = set(idx[:PAGINAS_CARIMBO] + idx[-PAGINAS_CARIMBO:])
+        por_idx = {p["pagina"] - 1: p for p in faltam}
+        total = len(idx)
+        feitas = 0
+        if progresso:
+            progresso(0, total)
+        workers = max(1, min(_WORKERS, total))
         try:
-            doc = pdfium.PdfDocument(pdf_bytes)
+            with ThreadPoolExecutor(max_workers=workers) as ex:
+                futuros = [ex.submit(_ocr_uma_pagina, pdf_bytes, i, i in carimbo) for i in idx]
+                for fut in as_completed(futuros):
+                    i, txt, conf, extra = fut.result()
+                    p = por_idx.get(i)
+                    if p is not None:
+                        if txt.strip():
+                            p.update(texto=txt, origem="ocr", conf=conf)
+                        if extra:
+                            p["extra"] = extra
+                    feitas += 1
+                    if progresso:
+                        progresso(feitas, total)
         except Exception:
-            doc = None
-        if doc is not None:
-            idx = [p["pagina"] - 1 for p in faltam]
-            carimbo = set(idx[:PAGINAS_CARIMBO] + idx[-PAGINAS_CARIMBO:])
-            for n, p in enumerate(faltam):
-                if progresso:
-                    progresso(n, len(faltam))
-                i = p["pagina"] - 1
-                try:
-                    img = _orientar(_imagem(doc, i))       # corrige página girada
-                    txt, conf = _ocr(img)
-                    if len(txt.strip()) < MIN_CHARS:        # ainda ruim: binariza e/ou gira
-                        img, txt, conf = _recuperar(img, txt, conf)
-                    if txt.strip():
-                        p.update(texto=txt, origem="ocr", conf=conf)
-                    if i in carimbo:
-                        p["extra"], _ = _ocr(img, psm=11)
-                except Exception:
-                    continue
-            if progresso:
-                progresso(len(faltam), len(faltam))
+            pass
     return paginas
 
 

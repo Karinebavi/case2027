@@ -20,7 +20,7 @@ def aplicar():
     st.markdown(
         f"""
         <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Poppins:wght@500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Nunito+Sans:wght@400;600;700;900&family=Poppins:wght@600;700&display=swap');
 
         :root {{
             --bg: #FFFFFF;
@@ -40,7 +40,8 @@ def aplicar():
         /* Inter via herança a partir do .stApp; controles de formulário recebem
            explicitamente. NÃO citar 'span' nem classes st-* (quebra os ícones). */
         html, body, .stApp, button, input, textarea, select {{
-            font-family: 'Inter', -apple-system, Segoe UI, Roboto, sans-serif;
+            font-family: 'Nunito Sans', -apple-system, Segoe UI, Roboto, sans-serif;
+            font-size: 15.5px;
         }}
         .stApp {{ background: var(--bg); color: var(--fg); }}
         .block-container {{ max-width: 1160px; padding-top: 1.1rem; }}
@@ -48,31 +49,52 @@ def aplicar():
         /* Títulos na fonte amigável (Poppins) e no roxo escuro do CASE.
            Prefixo .stApp + !important para vencer o estilo padrão do Streamlit. */
         .stApp h1, .stApp h2, .stApp h3, .stApp h4 {{
-            font-family: 'Poppins', 'Inter', sans-serif !important;
-            color: var(--heading) !important; font-weight: 600; letter-spacing: -0.01em;
+            font-family: 'Baloo 2', 'Poppins', sans-serif !important;
+            color: var(--heading) !important; font-weight: 700; letter-spacing: 0;
         }}
-        .stApp h1 {{ font-size: 1.9rem; font-weight: 700 !important; }}
-        .stApp h2 {{ font-size: 1.3rem; border-bottom: 3px solid var(--accent); padding-bottom: 6px; display: inline-block; }}
-        .stApp h3 {{ font-size: 1.08rem; }}
+        .stApp h1 {{ font-size: 2.15rem; line-height: 1.15; }}
+        .stApp h2 {{ font-size: 1.45rem; border-bottom: 3px solid var(--accent); padding-bottom: 5px; display: inline-block; }}
+        .stApp h3 {{ font-size: 1.18rem; }}
         .stCaption, [data-testid="stCaptionContainer"] {{ color: var(--muted-fg); }}
 
         /* Cabeçalho institucional — faixa lavanda com acento roxo à esquerda */
         .case-header {{
-            background: {LAVANDA}; color: var(--heading);
-            border: 1px solid var(--border); border-left: 4px solid var(--primary);
+            background: linear-gradient(100deg, {LAVANDA} 0%, #FBF8F2 100%); color: var(--heading);
+            border: 1px solid var(--border); border-left: 5px solid var(--primary);
             border-radius: var(--radius); box-shadow: var(--shadow);
-            padding: 13px 18px; margin-bottom: 16px;
+            padding: 14px 20px; margin-bottom: 14px;
             display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;
         }}
-        .case-header .t {{ font-family: 'Poppins', sans-serif; font-size: 16px; font-weight: 600; }}
-        .case-header .c {{ font-size: 13px; color: var(--muted-fg); }}
+        .case-header .t {{ font-family: 'Baloo 2', sans-serif; font-size: 19px; font-weight: 700; }}
+        .case-header .c {{ font-size: 13px; color: var(--muted-fg); font-weight: 600; }}
+
+        /* Guia "passo a passo" no topo de cada tela */
+        .case-steps {{ display: flex; align-items: center; flex-wrap: wrap; gap: 2px; margin: 2px 0 10px; }}
+        .case-steps .step {{ display: flex; flex-direction: column; align-items: center; min-width: 58px; }}
+        .case-steps .bola {{
+            width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center;
+            justify-content: center; font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 13px;
+            border: 2px solid var(--border); background: #fff; color: var(--muted-fg);
+        }}
+        .case-steps .rot {{ font-size: 10.5px; margin-top: 3px; color: var(--muted-fg); text-align: center; font-weight: 600; }}
+        .case-steps .step.cur .bola {{ background: var(--primary); border-color: var(--primary); color: #fff; box-shadow: 0 0 0 4px var(--ring); }}
+        .case-steps .step.cur .rot {{ color: var(--heading); font-weight: 700; }}
+        .case-steps .step.done .bola {{ background: {LAVANDA_CHIP}; border-color: {LAVANDA_CHIP}; color: var(--primary); }}
+        .case-steps .liga {{ flex: 1; height: 2px; background: var(--border); min-width: 10px; margin-top: -16px; }}
+
+        /* Caixa "o que fazer aqui" */
+        .case-guia {{
+            background: #FFF7EA; border: 1px solid #FCE3BF; border-left: 4px solid var(--accent);
+            border-radius: var(--radius); padding: 10px 14px; margin-bottom: 14px; font-size: 14px;
+        }}
+        .case-guia b {{ color: var(--heading); font-family: 'Baloo 2', sans-serif; }}
 
         /* Cards de indicador (metric) */
         [data-testid="stMetric"] {{
             background: #FFFFFF; border: 1px solid var(--border); border-radius: var(--radius);
             padding: 14px 16px; box-shadow: var(--shadow);
         }}
-        [data-testid="stMetricValue"] {{ font-family: 'Poppins', sans-serif; font-weight: 600; color: var(--heading); font-size: 1.7rem; }}
+        [data-testid="stMetricValue"] {{ font-family: 'Baloo 2', sans-serif; font-weight: 700; color: var(--heading); font-size: 1.95rem; }}
         [data-testid="stMetricLabel"] {{ color: var(--muted-fg); font-weight: 500; }}
 
         /* Botões — padrão branco com borda; principal no roxo */
