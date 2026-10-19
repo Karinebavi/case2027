@@ -95,7 +95,14 @@ def aplicar():
             padding: 14px 16px; box-shadow: var(--shadow);
         }}
         [data-testid="stMetricValue"] {{ font-family: 'Baloo 2', sans-serif; font-weight: 700; color: var(--heading); font-size: 1.95rem; }}
+        /* rótulo do indicador: quebra linha em vez de cortar com "…" */
         [data-testid="stMetricLabel"] {{ color: var(--muted-fg); font-weight: 500; }}
+        [data-testid="stMetricLabel"], [data-testid="stMetricLabel"] * {{
+            white-space: normal !important; overflow: visible !important;
+            text-overflow: clip !important; line-height: 1.25;
+        }}
+        /* rótulo de botão não corta (ex.: "Testar com exemplos") */
+        .stButton > button p, .stDownloadButton > button p {{ white-space: normal !important; }}
 
         /* Botões — padrão branco com borda; principal no roxo */
         .stButton > button, .stDownloadButton > button, .stFormSubmitButton > button {{

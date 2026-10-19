@@ -154,25 +154,48 @@ def _arquivos(dig):
     return arquivos
 
 
-def _visualizar_pdfs(arquivos, dig):
-    """Visualizador do PDF lado a lado com a conferência (o mentor vê o documento)."""
+@st.cache_data(show_spinner=False, max_entries=40)
+def _render_pagina(pdf_bytes, pagina, dpi=130):
+    """Renderiza UMA página do PDF como imagem PNG (sempre aparece, ao contrário
+    do iframe). Devolve (png_bytes, total_de_paginas)."""
+    import io as _io
+    import pypdfium2 as pdfium
+    doc = pdfium.PdfDocument(pdf_bytes)
+    try:
+        total = len(doc)
+        pagina = max(1, min(pagina, total))
+        img = doc[pagina - 1].render(scale=dpi / 72).to_pil()
+        buf = _io.BytesIO()
+        img.save(buf, "PNG")
+        return buf.getvalue(), total
+    finally:
+        try:
+            doc.close()
+        except Exception:
+            pass
+
+
+def _visualizar_pdfs(arquivos, dig, aberto=False):
+    """Pré-visualização do documento (página renderizada como imagem)."""
     todos = [(g, n, b) for g, lst in arquivos.items() for n, b in lst]
     if not todos:
         return
-    with st.expander(f":material/picture_as_pdf: Ver documento(s) ({len(todos)})"):
+    with st.expander(":material/picture_as_pdf: Documento (pré-visualização)", expanded=aberto):
         nomes = [n for _, n, _ in todos]
-        escolha = st.selectbox("Documento para visualizar", nomes, key=f"verpdf_{dig}",
-                               label_visibility="collapsed")
+        escolha = st.selectbox("Documento", nomes, key=f"verpdf_{dig}", label_visibility="collapsed")
         dados = next((b for _, n, b in todos if n == escolha), None)
-        if dados:
-            if len(dados) > 12_000_000:
-                st.caption("Documento muito grande para pré-visualizar aqui — baixe para abrir.")
-            else:
-                b64 = base64.b64encode(dados).decode()
-                st.markdown(
-                    f'<iframe src="data:application/pdf;base64,{b64}" width="100%" height="560" '
-                    f'style="border:1px solid #E7E3F3;border-radius:10px"></iframe>',
-                    unsafe_allow_html=True)
+        if not dados:
+            return
+        try:
+            pagina = int(st.session_state.get(f"verpg_{dig}", 1))
+            png, total = _render_pagina(dados, pagina)
+            if total > 1:
+                pagina = st.slider("Página", 1, total, min(pagina, total), key=f"verpg_{dig}")
+                png, total = _render_pagina(dados, pagina)
+            st.image(png, width="stretch")
+            st.caption(f"{escolha} — página {min(pagina, total)} de {total}")
+        except Exception:
+            st.caption("Não consegui pré-visualizar — use o botão de download para abrir o arquivo.")
 
 
 def _parecer_da_sessao(dig, arquivos, r, check):
@@ -242,6 +265,9 @@ def _painel_regra(container, icone, titulo, cri):
             rot, cor, ic = _COR_BADGE.get(cri.get("cor"), ("Sem dado", "gray", "help"))
             st.badge(rot, icon=f":material/{ic}:", color=cor)
             st.caption(cri.get("detalhe") or "")
+            ev = cri.get("evidencia")
+            if ev:
+                st.caption(f"› trecho no documento: “{ev}”")
         else:
             st.badge("Sem dado", icon=":material/help:", color="gray")
             st.caption("Documento não recebido ou não lido.")
@@ -335,10 +361,15 @@ def _analisar(f, dig):
                        f"{', '.join(salvo.get('arquivos', []))}")
 
         arquivos = _arquivos(dig)
-        _visualizar_pdfs(arquivos, dig)
         p = _parecer_da_sessao(dig, arquivos, r, check)
         if p:
-            _mostrar_parecer(p, dig)
+            cL, cR = st.columns([5, 6], gap="medium")
+            with cL:
+                _visualizar_pdfs(arquivos, dig, aberto=True)
+            with cR:
+                _mostrar_parecer(p, dig)
+        else:
+            _visualizar_pdfs(arquivos, dig, aberto=False)
         crit = conferencia.criterios(p) if p else {}
 
         st.markdown("**2 · Conferência do mentor** — os itens vêm pré-marcados pelo parecer; confirme ou corrija.")
