@@ -6,7 +6,7 @@ BLOCOS = ["Elaboração", "Execução", "Equipe", "Receita", "Infra adm.", "Infr
 COLS_B = ["b1", "b2", "b3", "b4", "b5", "b6", "b7"]
 
 # As 7 etapas do processo, na ordem das abas (para o guia "passo a passo").
-FASES = ["Importar", "Resultado", "Análises", "Documental", "Entrevistas", "Fichas", "Dashboard"]
+FASES = ["Importar", "Resultado", "Documental", "Análises", "Entrevistas", "Fichas", "Dashboard"]
 
 
 def _stepper(atual):
@@ -64,8 +64,10 @@ def cabecalho(passo=None, oque=None):
                     unsafe_allow_html=True)
 
 
-def ficha(df, entidade):
-    """Mostra a ficha de uma entidade: nota por bloco, radar (entidade x média) e dados."""
+def ficha(df, entidade, dados=None, mapa=None):
+    """Mostra a ficha de uma entidade: nota por bloco, radar (entidade x média) e dados.
+    Com `dados`+`mapa`, mostra a memória de cálculo detalhada (o que respondeu
+    e como pontuou em cada bloco)."""
     import plotly.graph_objects as go
 
     linha = df[df["Entidade"] == entidade]
@@ -112,6 +114,26 @@ def ficha(df, entidade):
         st.warning(f"**Por que a nota é {int(r['Nota'])}:** {motivo}. "
                    "Os blocos abaixo mostram os pontos que teria, mas a nota final foi zerada por esse motivo.")
 
-    st.markdown("**Memória de cálculo — pontos por bloco**")
-    tabela = [{"Bloco": b, "Pontos": v, "Média das aptas": m} for b, v, m in zip(BLOCOS, valores, medias)]
-    st.dataframe(tabela, width="stretch", hide_index=True)
+    st.markdown("**Memória de cálculo — como foi a pontuação, bloco a bloco**")
+    det = []
+    if dados is not None and mapa is not None:
+        from regras import pontuacao as _pont
+        det = _pont.detalhar(dados, mapa, r.get("CNPJ", ""))
+    if det:
+        linhas_mem = [{"Bloco": d["Bloco"], "O que respondeu": d["Resposta"],
+                       "Pontos": d["Pontos"], "Máx": d["Máx"],
+                       "Média das aptas": medias[i] if i < len(medias) else None,
+                       "Como foi contado": d["Como foi contado"]}
+                      for i, d in enumerate(det)]
+        st.dataframe(linhas_mem, width="stretch", hide_index=True, column_config={
+            "O que respondeu": st.column_config.TextColumn("O que respondeu", width="medium"),
+            "Pontos": st.column_config.NumberColumn("Pontos", width="small"),
+            "Máx": st.column_config.NumberColumn("Máx", width="small"),
+            "Média das aptas": st.column_config.NumberColumn("Média das aptas", width="small"),
+            "Como foi contado": st.column_config.TextColumn("Como foi contado", width="medium"),
+        })
+        st.caption(f"Soma dos blocos: {sum(d['Pontos'] for d in det)} de 70 pontos possíveis."
+                   + ("  A nota final foi zerada pelo motivo acima." if motivo else ""))
+    else:
+        tabela = [{"Bloco": b, "Pontos": v, "Média das aptas": m} for b, v, m in zip(BLOCOS, valores, medias)]
+        st.dataframe(tabela, width="stretch", hide_index=True)

@@ -203,11 +203,18 @@ def bloco_habilitacao(cart, doc_cart, est, doc_est, api, ref, cfg):
     if est:
         fins = [f for f in est["finalidade"] if f["em_fins"]]
         if fins:
-            arts = sorted({f["artigo"] for f in fins}, key=lambda a: [int(x) for x in re.findall(r"\d+", a)][:1])
+            # um trecho por artigo de finalidade (sem repetir o mesmo artigo)
+            vistos, evs, arts = set(), [], []
+            for f in fins:
+                if f["artigo"] not in vistos:
+                    vistos.add(f["artigo"])
+                    evs.append(f["ev"])
+                    arts.append(f["artigo"])
+            arts = sorted(arts, key=lambda a: [int(x) for x in re.findall(r"\d+", a)][:1])
             out.append(achado("HAB-05", B, "Finalidade esportiva", OK,
-                              "Esporte previsto no objeto/finalidades nos artigos: " + "; ".join(arts) +
-                              ". Confirme que o esporte é FIM da entidade (não só meio para outro fim).",
-                              [f["ev"] for f in fins[:5]]))
+                              "Esporte previsto como finalidade da entidade em " + "; ".join(arts) +
+                              ". Veja o trecho e confirme que o esporte é FIM (não só meio para outro fim).",
+                              evs[:3]))
         elif est["finalidade"]:
             f = est["finalidade"][0]
             out.append(achado("HAB-05", B, "Finalidade esportiva", ATENCAO,

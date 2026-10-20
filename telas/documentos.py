@@ -28,7 +28,7 @@ def mostrar():
     cnpjs = st.session_state.get("fase2_cnpjs")
     if not cnpjs:
         st.info(
-            "Nenhuma organização selecionada. Faça a seleção na aba 3 · Análises "
+            "Nenhuma organização selecionada. Faça a seleção na aba 4 · Análises"
             "(planilha do patrocinador) ou na aba 2 · Resultado (seleção rápida)."
         )
         return

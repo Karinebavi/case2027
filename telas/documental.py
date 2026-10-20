@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Tela 4 — Documental (Fase 2)
+Tela 3 — Documental (Fase 2)
 ============================
 O pool das melhores (por padrão 30) passa pela análise documental. Para cada
 uma o mentor sobe os três documentos (Cartão CNPJ, Estatuto e Ata) e confere,
@@ -8,6 +8,7 @@ item a item, as regras do edital. Aprovando, segue para a entrevista; excluindo,
 informa o motivo e a próxima do ranking entra automaticamente (repescagem).
 """
 import base64
+import html
 import json
 import os
 
@@ -58,8 +59,8 @@ _LABEL = {k: rot for k, rot in _TODAS}
 
 
 def mostrar():
-    st.title("4 · Documental (Fase 2)")
-    _ui.cabecalho(4, "Suba os documentos de cada organização; o sistema lê e monta o parecer. "
+    st.title("3 · Documental (Fase 2)")
+    _ui.cabecalho(3, "Suba os documentos de cada organização; o sistema lê e monta o parecer. "
                      "Você confere e aprova ou exclui (com motivo) — a próxima entra automaticamente.")
 
     dados = st.session_state.get("dados")
@@ -241,8 +242,6 @@ def _parecer_da_sessao(dig, arquivos, r, check):
     return None
 
 
-_RES_UI = {"APTO": "success", "APTO_COM_AJUSTES": "warning", "NAO_APTO": "error"}
-
 # Severidade dos ajustes, em ordem e em linguagem de gente.
 _SEV = [(("BLOQUEANTE",), "Impede a aprovação"),
         (("PENDENCIA",), "Falta providenciar"),
@@ -282,9 +281,54 @@ def _paineis_regras(p):
     _painel_regra(c3, "verified", "Mandato / ata de posse", crit.get("ata_vigencia"))
 
 
+_RES_ESTILO = {
+    "APTO": ("APTO", "linear-gradient(105deg,#1E9E5A 0%,#13864A 100%)"),
+    "APTO_COM_AJUSTES": ("APTO COM AJUSTES", "linear-gradient(105deg,#F0901E 0%,#E07412 100%)"),
+    "NAO_APTO": ("NÃO APTO", "linear-gradient(105deg,#D84B4B 0%,#BE3636 100%)"),
+}
+
+
+def _resumo_destaque(p):
+    """Cartão grande e colorido no topo: o resultado, os números e os três
+    destaques (finalidade, tempo de funcionamento, mandato) com o trecho."""
+    rotulo, fundo = _RES_ESTILO.get(p["resultado"], ("—", "linear-gradient(105deg,#7A7A7A,#5E5E5E)"))
+    ach = p.get("achados", [])
+    n_ok = sum(1 for a in ach if a["status"] == "OK")
+    n_at = sum(1 for a in ach if a["status"] in ("ATENCAO", "ATENCAO_MENOR"))
+    n_pd = sum(1 for a in ach if a["status"] == "PENDENCIA")
+    n_bl = sum(1 for a in ach if a["status"] == "BLOQUEANTE")
+
+    crit = conferencia.criterios(p)
+    rotulos = [("est_finalidade", "Finalidade esportiva"), ("cnpj_1ano", "Tempo de funcionamento"),
+               ("ata_vigencia", "Mandato / ata de posse")]
+    linhas = []
+    for chave, nome in rotulos:
+        c = crit.get(chave)
+        if not c:
+            continue
+        detalhe = html.escape(c.get("detalhe") or "")
+        ev = c.get("evidencia")
+        tr = f'<span class="tr">“{html.escape(ev[:150])}”</span>' if ev else ""
+        linhas.append(f'<div class="d"><b>{html.escape(nome)}:</b> {detalhe}{tr}</div>')
+    destaques = f'<div class="destaques">{"".join(linhas)}</div>' if linhas else ""
+
+    st.html(
+        f'<div class="case-resumo" style="background:{fundo}">'
+        f'<div class="selo">PARECER DA CONFERÊNCIA</div>'
+        f'<div class="res">{rotulo}</div>'
+        f'<div class="ent">{html.escape(p.get("entidade", ""))}</div>'
+        f'<div class="fr">{html.escape(p.get("frase", ""))}</div>'
+        f'{destaques}</div>')
+
+    c = st.columns(4)
+    c[0].metric("Conformes", n_ok)
+    c[1].metric("Atenção", n_at)
+    c[2].metric("Pendências", n_pd)
+    c[3].metric("Bloqueios", n_bl)
+
+
 def _mostrar_parecer(p, dig):
-    tipo = _RES_UI[p["resultado"]]
-    getattr(st, tipo)(f"**{parecer_mod.RESULTADO_TXT[p['resultado']]}** — {p['frase']}")
+    _resumo_destaque(p)
 
     _paineis_regras(p)
 
@@ -330,12 +374,24 @@ def _mostrar_parecer(p, dig):
                        f"parecer_{nome}.json", "application/json", key=f"dljs_{dig}", width="stretch")
 
 
-def _legenda(sug):
-    if not sug:
+def _item_conferencia(chave, cri, dig, nomes_doc):
+    """Abaixo de cada item do checklist: o que o sistema encontrou (status,
+    resumo e trecho) e o botão que abre o documento na página exata."""
+    if not cri:
+        st.caption("Sem documento/leitura para este item — confira manualmente.")
         return
-    badge = _BADGE.get(sug["cor"], "")
-    detalhe = sug.get("detalhe", "")
-    st.caption(f"{badge} · {detalhe}" if detalhe else badge)
+    badge = _BADGE.get(cri.get("cor"), "")
+    detalhe = cri.get("detalhe", "")
+    st.caption(f"{badge} · {detalhe}" if detalhe else (badge or ""))
+    ev = cri.get("evidencia")
+    if ev:
+        st.caption(f"› trecho: “{ev}”")
+    arq, pag = cri.get("arquivo"), cri.get("pagina")
+    if arq and arq in nomes_doc and pag:
+        if st.button(f"Conferir no documento (pág. {pag})", key=f"ir_{chave}_{dig}",
+                     icon=":material/menu_book:"):
+            st.session_state[f"jump_{dig}"] = {"arquivo": arq, "pagina": int(pag)}
+            st.rerun()
 
 
 def _analisar(f, dig):
@@ -361,6 +417,13 @@ def _analisar(f, dig):
                        f"{', '.join(salvo.get('arquivos', []))}")
 
         arquivos = _arquivos(dig)
+        # "Conferir no documento": um botão de item pediu para abrir o PDF numa
+        # página. Consumimos aqui, ANTES de montar a pré-visualização, para não
+        # alterar o widget depois de criado (regra do Streamlit).
+        jump = st.session_state.pop(f"jump_{dig}", None)
+        if jump:
+            st.session_state[f"verpdf_{dig}"] = jump["arquivo"]
+            st.session_state[f"verpg_{dig}"] = int(jump["pagina"])
         p = _parecer_da_sessao(dig, arquivos, r, check)
         if p:
             cL, cR = st.columns([5, 6], gap="medium")
@@ -372,16 +435,22 @@ def _analisar(f, dig):
             _visualizar_pdfs(arquivos, dig, aberto=False)
         crit = conferencia.criterios(p) if p else {}
 
-        st.markdown("**2 · Conferência do mentor** — os itens vêm pré-marcados pelo parecer; confirme ou corrija.")
+        st.markdown("**2 · Conferência do mentor** — o sistema já marcou o que encontrou; confirme ou corrija. "
+                    "Clique em *Conferir no documento* para abrir o PDF ao lado, na página exata.")
+        nomes_doc = {n for _g, lst in arquivos.items() for n, _b in lst}
         novos = {}
         for grupo, itens in CRITERIOS.items():
             st.markdown(f"*{grupo}*")
             for chave, rot in itens:
+                cri = crit.get(chave)
                 k = f"chk_{chave}_{dig}"
                 if k not in st.session_state:
-                    st.session_state[k] = bool(check.get(chave, False))
+                    if chave in check:            # já conferido antes: respeita o mentor
+                        st.session_state[k] = bool(check.get(chave))
+                    else:                          # pré-marca pelo parecer (só o que é conforme)
+                        st.session_state[k] = ((cri or {}).get("sugestao") is True)
                 novos[chave] = st.checkbox(rot, key=k)
-                _legenda(crit.get(chave))
+                _item_conferencia(chave, cri, dig, nomes_doc)
 
         conferidos = sum(1 for k, _ in _TODAS if novos.get(k))
         faltando = [rot for k, rot in _TODAS if not novos.get(k)]

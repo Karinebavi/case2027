@@ -21,10 +21,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 MIN_CHARS = 50   # abaixo disso a página é tratada como sem texto útil
 DPI_OCR = 300
 PAGINAS_CARIMBO = 2  # 2ª leitura nas N primeiras e N últimas folhas escaneadas
-# OCR em paralelo: cada página roda num processo do Tesseract. O gargalo é o
-# Tesseract (subprocesso), então threads dão paralelismo real entre núcleos.
-# Limitado para não estourar a memória no plano grátis da nuvem.
-_WORKERS = max(1, min(3, (os.cpu_count() or 2)))
+# OCR SEQUENCIAL (1 por vez). Cada página chama o Tesseract, que roda como
+# subprocesso e usa arquivos temporários. Rodar várias páginas em paralelo
+# (threads) parecia mais rápido, mas na prática derrubava a leitura: num
+# estatuto de 30 folhas, 3 threads liam só 2 páginas (o resto voltava vazio)
+# e o estrago ainda contaminava o documento seguinte. Em sequência, as mesmas
+# 30 páginas leem 30/30. Num conferidor de documentos, ler certo vale mais que
+# ler rápido — e a barra de progresso mantém o mentor informado.
+_WORKERS = 1
 
 try:
     import pdfplumber
@@ -211,6 +215,42 @@ def _ocr(img, psm=None):
     return "\n".join(linhas), conf
 
 
+def _paginas_por_pdfium(pdf_bytes):
+    """Fallback quando o pdfplumber não abre o PDF (arquivo malformado: devolve
+    0 páginas ou lança erro). Conta as folhas pelo renderizador — elas entram
+    como 'escaneada' e seguem todas para o OCR, que lê a imagem da página.
+    Destrava estatutos/atas gerados por scanners que o pdfplumber não parseia."""
+    if pdfium is None:
+        return []
+    try:
+        doc = pdfium.PdfDocument(pdf_bytes)
+        n = len(doc)
+        doc.close()
+    except Exception:
+        return []
+    return [{"pagina": i + 1, "texto": "", "extra": "", "origem": "escaneada", "conf": 0.0}
+            for i in range(n)]
+
+
+import re as _re
+
+# Carimbo de registro/assinatura digital (RCPJ, ITI) que alguns cartórios
+# estampam por cima de um estatuto ESCANEADO. Esse carimbo tem texto digital,
+# então a página parecia "digital" e pulava o OCR — perdendo o corpo real do
+# documento (foi o caso de um estatuto que vinha com 0 artigos lidos).
+_CARIMBO_FORTE = _re.compile(
+    r"rcpj|iti\.gov\.br|assinad[oa] digitalmente|documento foi registrado",
+    _re.IGNORECASE)
+
+
+def _so_carimbo(txt):
+    """True quando o texto 'digital' da página é só o carimbo de registro/
+    assinatura digital (RCPJ/ITI) — sinal de que o conteúdo real está numa
+    imagem atrás e a página precisa ir para o OCR. Páginas de texto digital
+    de verdade têm muito mais que isto, então o limite de tamanho as poupa."""
+    return len(txt) < 900 and bool(_CARIMBO_FORTE.search(txt))
+
+
 def extrair_paginas(arquivo, progresso=None):
     """
     Lista de páginas: {"pagina", "texto", "extra", "origem", "conf"}.
@@ -219,24 +259,28 @@ def extrair_paginas(arquivo, progresso=None):
     """
     pdf_bytes = _bytes(arquivo)
     erro = [{"pagina": 1, "texto": "", "extra": "", "origem": "erro", "conf": 0.0}]
-    if not pdf_bytes or pdfplumber is None:
+    if not pdf_bytes:
         return erro
 
     paginas = []
-    try:
-        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-            for i, pg in enumerate(pdf.pages):
-                try:
-                    limpa = pg.filter(lambda o: o.get("upright", True))
-                    txt = (limpa.extract_text() or "").strip()
-                except Exception:
-                    txt = (pg.extract_text() or "").strip()
-                digital = len(txt) >= MIN_CHARS
-                paginas.append({"pagina": i + 1, "texto": txt, "extra": "",
-                                "origem": "digital" if digital else "escaneada",
-                                "conf": 1.0 if digital else 0.0})
-    except Exception:
-        return erro
+    if pdfplumber is not None:
+        try:
+            with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+                for i, pg in enumerate(pdf.pages):
+                    try:
+                        limpa = pg.filter(lambda o: o.get("upright", True))
+                        txt = (limpa.extract_text() or "").strip()
+                    except Exception:
+                        txt = (pg.extract_text() or "").strip()
+                    digital = len(txt) >= MIN_CHARS and not _so_carimbo(txt)
+                    paginas.append({"pagina": i + 1, "texto": txt, "extra": "",
+                                    "origem": "digital" if digital else "escaneada",
+                                    "conf": 1.0 if digital else 0.0})
+        except Exception:
+            paginas = []
+    # PDF que o pdfplumber não abriu (0 páginas ou erro): tenta pelo renderizador.
+    if not paginas:
+        paginas = _paginas_por_pdfium(pdf_bytes)
     if not paginas:
         return erro
 
@@ -266,6 +310,18 @@ def extrair_paginas(arquivo, progresso=None):
                         progresso(feitas, total)
         except Exception:
             pass
+        # Reentrada: páginas que ficaram vazias (falha transitória do OCR sob
+        # carga — some quando a entidade tem dois PDFs grandes juntos) ganham
+        # UMA segunda tentativa, agora sequencial (sem concorrência de threads).
+        restantes = [p["pagina"] - 1 for p in faltam if p["origem"] == "escaneada"]
+        if restantes:
+            for i in restantes:
+                _ii, txt, conf, extra = _ocr_uma_pagina(pdf_bytes, i, i in carimbo)
+                p = por_idx.get(i)
+                if p is not None and txt.strip():
+                    p.update(texto=txt, origem="ocr", conf=conf)
+                    if extra:
+                        p["extra"] = extra
     return paginas
 
 

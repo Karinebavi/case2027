@@ -52,7 +52,7 @@ def mostrar():
     c[3].metric("Descartadas (total)", cont["descartadas"])
 
     if len(aptas) == 0:
-        st.info("Nenhuma organização aprovada na documental ainda. Volte à aba 4 · Documental.")
+        st.info("Nenhuma organização aprovada na documental ainda. Volte à aba 3 · Documental.")
         return
 
     st.caption("Aprovar mantém no processo; não comparecer ou parecer negativo exclui e repesca a próxima.")

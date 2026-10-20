@@ -37,10 +37,11 @@ CAMPOS = [
     ("Eliminatórias (Sim/Não)", "estatuto", "Estatuto com finalidade esportiva", True, ["estatuto"]),
     ("Eliminatórias (Sim/Não)", "computador", "Computador com câmera e microfone", True, ["computador", "câmera", "camera"]),
     ("Eliminatórias (Sim/Não)", "internet", "Internet para as reuniões", True, ["internet"]),
-    ("Eliminatórias (Sim/Não)", "disponibilidade", "Disponibilidade de 1h30 por semana", True, ["disponibilidade", "1h30"]),
+    ("Eliminatórias (Sim/Não)", "disponibilidade", "Disponibilidade de 2h por semana (10 meses)", True, ["disponibilidade", "1h30", "2h por semana"]),
     ("Eliminatórias (Sim/Não)", "modalidades", "Modalidades esportivas praticadas", False, ["modalidade"]),
 
-    ("Perguntas de nota", "p18", "Elaboração — projetos que já escreveu", True, ["escreveu para pedir", "elabor"]),
+    ("Perguntas de nota", "p18", "Elaboração — projetos que já escreveu", True,
+     ["escreveu para pedir", "elabor", "inscreveu algum projeto", "captar recurso"]),
     ("Perguntas de nota", "p19", "Execução — projetos que já colocou em prática", True, ["colocou em prática", "execu"]),
     ("Perguntas de nota", "p20_lie", "Situação na Lei de Incentivo ao Esporte (LIE)", False,
      ["lei de incentivo", "incentivo ao esporte", "(lie)", "lie"]),

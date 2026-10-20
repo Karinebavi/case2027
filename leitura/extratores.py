@@ -219,6 +219,24 @@ def cartao(doc):
 # ------------------------------------------------------------------- estatuto
 
 _ESPORTE = r"esport|desport|atividades? fisicas?|educacao fisica|modalidades?"
+
+# Declaração de finalidades/objeto no CABEÇALHO de um artigo. Identifica o
+# artigo que de fato enuncia as finalidades da entidade (ex.: "tem por
+# finalidades:", "finalidades e objetivos", "dos fins:"), separando-o dos que
+# só CITAM esporte de passagem (Diretoria de Esportes, Ouvidoria Desportiva,
+# receitas...). Não casa "sem fins lucrativos"/"fins econômicos".
+_FINS_DECLARA = re.compile(
+    r"tem\s+por\s+(?:finalidade|objetivo|objeto|fim|fins|missao)"
+    r"|\bd[oa]s\s+(?:finalidade|objetivo|objeto|fins)\b"
+    r"|\bfinalidades?\s+e\s+objetivos?"
+    r"|\b(?:finalidade|objetivo|objeto\s+social)s?\s*:")
+
+
+def _artigos_de_finalidade(doc):
+    """Posições dos artigos cujo início DECLARA as finalidades/objeto da
+    entidade (normalmente os primeiros). Conjunto vazio quando não dá para
+    identificar — aí as regras caem na heurística antiga."""
+    return {a["pos"] for a in doc.artigos() if _FINS_DECLARA.search(a["plano"][:220])}
 _CARGOS = [
     ("Diretoria Executiva", r"^diretoria executiva$"),
     ("Presidente", r"\bpresidente\b(?!\s+do conselho fiscal)"),
@@ -278,10 +296,16 @@ def estatuto(doc):
         e["ev"]["sede_art"] = doc.rotulo_artigo(mm.start())
         break
 
-    # finalidade esportiva (onde aparece e se é no artigo dos fins)
+    # finalidade esportiva: marca o esporte que aparece DENTRO do(s) artigo(s)
+    # que declaram as finalidades. Se não achou esse artigo (estatuto fora do
+    # padrão), usa a heurística antiga para não deixar passar.
+    arts_fins = _artigos_de_finalidade(doc)
     for mm in doc.buscar(_ESPORTE):
         art = doc.artigo_em(mm.start())
-        fins = bool(art and re.search(r"finalidade|objetivo|\bfins\b|objeto|missao|atuacao", art["plano"][:600]))
+        if arts_fins:
+            fins = bool(art and art["pos"] in arts_fins)
+        else:
+            fins = bool(art and re.search(r"finalidade|objetivo|\bfins\b|objeto|missao|atuacao", art["plano"][:600]))
         e["finalidade"].append({"artigo": doc.rotulo_artigo(mm.start()), "em_fins": fins,
                                 "ev": doc.ev(mm.start(), 140, 120)})
     ma = doc.primeiro(r"entre (?:os )?seus associados")

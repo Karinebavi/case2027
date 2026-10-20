@@ -131,7 +131,7 @@ def mostrar():
     nomes = list(vista.sort_values("Nota", ascending=False)["Entidade"])
     escolha_ficha = st.selectbox("Abrir ficha de:", ["—"] + nomes, key="ficha_sel")
     if escolha_ficha and escolha_ficha != "—":
-        _ui.ficha(f, escolha_ficha)
+        _ui.ficha(f, escolha_ficha, dados, mapa)
 
     # ----------------------- Detalhes -----------------------
     st.divider()

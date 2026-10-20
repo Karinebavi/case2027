@@ -89,6 +89,27 @@ def aplicar():
         }}
         .case-guia b {{ color: var(--heading); font-family: 'Baloo 2', sans-serif; }}
 
+        /* Cartão-resumo do parecer (destaque no topo da análise documental) */
+        .case-resumo {{
+            border-radius: 14px; padding: 18px 22px; margin: 2px 0 16px; color: #FFFFFF;
+            box-shadow: 0 8px 22px rgba(62,8,124,.18);
+        }}
+        .case-resumo .selo {{
+            display: inline-block; background: rgba(255,255,255,.22); border-radius: 999px;
+            padding: 3px 12px; font-family: 'Baloo 2', sans-serif; font-weight: 700;
+            font-size: 11.5px; letter-spacing: .6px; margin-bottom: 9px;
+        }}
+        .case-resumo .res {{ font-family: 'Baloo 2', sans-serif; font-size: 1.7rem; font-weight: 800; line-height: 1.05; }}
+        .case-resumo .ent {{ font-size: 15.5px; font-weight: 700; margin-top: 3px; opacity: .97; }}
+        .case-resumo .fr {{ font-size: 13.5px; margin-top: 7px; opacity: .95; }}
+        .case-resumo .destaques {{ margin-top: 13px; display: flex; flex-direction: column; gap: 7px; }}
+        .case-resumo .d {{
+            background: rgba(255,255,255,.14); border-left: 3px solid rgba(255,255,255,.75);
+            border-radius: 8px; padding: 7px 11px; font-size: 13px;
+        }}
+        .case-resumo .d b {{ font-family: 'Baloo 2', sans-serif; font-weight: 700; }}
+        .case-resumo .d .tr {{ display: block; font-size: 12px; opacity: .9; margin-top: 2px; font-style: italic; }}
+
         /* Cards de indicador (metric) */
         [data-testid="stMetric"] {{
             background: #FFFFFF; border: 1px solid var(--border); border-radius: var(--radius);

@@ -318,8 +318,11 @@ def sugestoes_criterios(p):
         return min(lst, key=lambda a: R.PRIORIDADE[a["status"]]) if lst else None
 
     def s(sug, cor, a=None, detalhe=None):
+        ev = a["evidencia"] if a else None
         return {"sugestao": sug, "cor": cor, "detalhe": detalhe or (a["constatacao"] if a else ""),
-                "evidencia": (a["evidencia"]["trecho"][:160] if a else ""),
+                "evidencia": (ev["trecho"][:160] if ev else ""),
+                "arquivo": (ev.get("arquivo") if ev else None),
+                "pagina": (ev.get("pagina") if ev else None),
                 "regra": a["regra_id"] if a else ""}
 
     def de(rid, ok_cor="verde"):

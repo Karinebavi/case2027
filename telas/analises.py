@@ -15,8 +15,8 @@ from regras import processo as proc
 
 
 def mostrar():
-    st.title("3 · Análises")
-    _ui.cabecalho(3, "Marque o interesse do patrocinador nas organizações da Fase 2 — direto na "
+    st.title("4 · Análises")
+    _ui.cabecalho(4, "Marque o interesse do patrocinador nas organizações da Fase 2 — direto na "
                      "tabela ou subindo a planilha que ele preencheu.")
 
     dados = st.session_state.get("dados")

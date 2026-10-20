@@ -45,7 +45,7 @@ with st.sidebar:
     st.caption("Seleção 2027 · uso interno")
     escolha = st.radio(
         "Navegação",
-        ["1 · Importar", "2 · Resultado", "3 · Análises", "4 · Documental",
+        ["1 · Importar", "2 · Resultado", "3 · Documental", "4 · Análises",
          "5 · Entrevistas", "6 · Fichas", "7 · Dashboard"],
         label_visibility="collapsed",
     )
@@ -77,9 +77,9 @@ if escolha.startswith("1"):
 elif escolha.startswith("2"):
     resultado.mostrar()
 elif escolha.startswith("3"):
-    analises.mostrar()
-elif escolha.startswith("4"):
     documental.mostrar()
+elif escolha.startswith("4"):
+    analises.mostrar()
 elif escolha.startswith("5"):
     entrevistas.mostrar()
 elif escolha.startswith("6"):
