@@ -24,9 +24,11 @@ except Exception:  # fora do Streamlit (testes)
 
 
 @_cache
-def _ler(dados, _progresso=None):
-    """Páginas do PDF (cache pelo conteúdo: subir de novo não relê)."""
-    return _texto.extrair_paginas(dados, progresso=_progresso)
+def _ler(dados):
+    """Páginas do PDF (cache pelo conteúdo: subir de novo não relê).
+    NÃO chama elementos do Streamlit aqui dentro (incompatível com o cache) —
+    o aviso de progresso fica por documento, em analisar(), fora do cache."""
+    return _texto.extrair_paginas(dados)
 
 
 def assinatura(arquivos):
@@ -48,12 +50,9 @@ def analisar(arquivos, cnpj_inscricao=None, nome_inscricao=None, progresso=None,
     todos = [(g, n, b) for g, lst in arquivos.items() for n, b in lst]
     docs = []
     for i, (grupo, nome, dados) in enumerate(todos):
-        def _p(feitas, total, i=i, nome=nome):
-            if progresso and total:
-                progresso(f"Lendo {nome} (OCR {feitas}/{total} pág.)", (i + feitas / total) / len(todos))
         if progresso:
             progresso(f"Lendo {nome}…", i / max(len(todos), 1))
-        paginas = _ler(dados, _progresso=_p)
+        paginas = _ler(dados)
         d = Documento(nome, paginas, grupo)
         d.origem = _texto.origem_geral(paginas)
         d.hash = hashlib.md5(dados).hexdigest()
