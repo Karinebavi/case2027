@@ -10,7 +10,7 @@ import streamlit as st
 
 import pandas as pd
 
-from regras import leitura, mapeamento, normalizacao, base_dados, nuvem
+from regras import leitura, mapeamento, normalizacao, base_dados, nuvem, wix
 from base import campos as campos_def
 from telas import _ui
 
@@ -37,6 +37,9 @@ def mostrar():
 
     if arquivo is not None:
         _processar_upload(arquivo)
+
+    st.divider()
+    _sincronizar_wix()
 
     st.divider()
     _painel_base(st.session_state["dados"])
@@ -74,7 +77,12 @@ def _processar_upload(arquivo):
     except Exception as erro:
         st.error(f"Não consegui ler esse arquivo. Detalhe técnico: {erro}")
         return
+    _processar_df(novo, origem=getattr(arquivo, "name", ""), sufixo="csv")
 
+
+def _processar_df(novo, origem, sufixo):
+    """Núcleo compartilhado: mapeia, confirma e soma à base. Serve tanto para o
+    CSV quanto para a sincronização com o Wix (o `novo` já é um DataFrame)."""
     colunas = list(novo.columns)
     auto = mapeamento.auto_map(colunas)
 
@@ -86,7 +94,7 @@ def _processar_upload(arquivo):
         st.warning("Algumas colunas obrigatórias não foram reconhecidas. Indique a coluna certa:")
         opcoes = ["— não encontrada —"] + colunas
         for ch, rot in faltando:
-            escolha = st.selectbox(rot, opcoes, key=f"map_{ch}")
+            escolha = st.selectbox(rot, opcoes, key=f"map_{ch}_{sufixo}")
             if escolha and not escolha.startswith("—"):
                 manual[ch] = escolha
 
@@ -94,16 +102,16 @@ def _processar_upload(arquivo):
     mapa.update(manual)
     ainda_falta = [rot for ch, rot in obrig if not mapa.get(ch)]
 
-    st.write(f"**{len(novo)}** inscrições no arquivo. "
+    st.write(f"**{len(novo)}** inscrições. "
              + ("Tudo reconhecido." if not ainda_falta else f"Faltam: {', '.join(ainda_falta)}."))
 
-    if st.button("Somar à base", type="primary", disabled=bool(ainda_falta)):
+    if st.button("Somar à base", type="primary", disabled=bool(ainda_falta), key=f"somar_{sufixo}"):
         novos_norm = normalizacao.normalizar(novo, mapa)
         base = base_dados.carregar()
         final, cnpjs_novos, n_atualizados = base_dados.acumular(base, novos_norm)
         base_dados.salvar(final)
         nuvem.registrar("importar", {
-            "arquivo": getattr(arquivo, "name", ""), "linhas_no_arquivo": len(novo),
+            "origem": origem, "linhas_no_arquivo": len(novo),
             "novas": len(cnpjs_novos), "atualizadas": n_atualizados, "total_base": len(final)})
         st.session_state["dados"] = final
         st.session_state["mapa"] = normalizacao.mapa_identidade()
@@ -116,6 +124,34 @@ def _processar_upload(arquivo):
             f"base agora com {len(final)} inscrições."
         )
         st.rerun()
+
+
+def _sincronizar_wix():
+    """Botão opcional: puxa as inscrições direto do Wix e soma à base."""
+    if not wix.ativo():
+        st.caption(":material/sync: Sincronização com o Wix desligada — configure a seção [wix] "
+                   "no Secrets (api_key e site_id) para ativar.")
+        return
+    st.markdown("**Sincronizar com o Wix**")
+    st.caption("Puxa as inscrições direto do formulário. Os documentos NÃO vêm por aqui — "
+               "no formulário eles são enviados por um link à parte.")
+    if st.button("Buscar inscrições do Wix", key="wix_buscar", icon=":material/sync:"):
+        with st.spinner("Buscando as inscrições no Wix…"):
+            try:
+                df, info = wix.sincronizar()
+                st.session_state["_wix_df"] = df
+                st.session_state["_wix_info"] = info
+                st.session_state.pop("_wix_erro", None)
+            except Exception as e:
+                st.session_state["_wix_df"] = None
+                st.session_state["_wix_erro"] = str(e)
+        st.rerun()
+    if st.session_state.get("_wix_erro"):
+        st.error(st.session_state["_wix_erro"])
+    wdf = st.session_state.get("_wix_df")
+    if wdf is not None and len(wdf):
+        st.caption(st.session_state.get("_wix_info", ""))
+        _processar_df(wdf, origem="Wix", sufixo="wix")
 
 
 def _painel_base(base):

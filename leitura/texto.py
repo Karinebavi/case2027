@@ -108,6 +108,33 @@ def _imagem(pdf_doc, indice, dpi=DPI_OCR):
     return pagina.render(scale=escala).to_pil().convert("L")
 
 
+def _eh_imagem(dados):
+    """Reconhece foto/scan enviado como imagem (JPEG, PNG, TIFF, GIF, BMP, WebP)
+    pela assinatura do arquivo — muitas entidades mandam FOTO do documento."""
+    b = dados[:12]
+    return (b[:3] == b"\xff\xd8\xff" or b[:4] == b"\x89PNG" or b[:4] in (b"II*\x00", b"MM\x00*")
+            or b[:4] == b"GIF8" or b[:2] == b"BM" or (b[:4] == b"RIFF" and b[8:12] == b"WEBP"))
+
+
+def _ler_imagem(dados):
+    """OCR direto numa imagem (não-PDF). Devolve a lista de páginas (uma)."""
+    import io as _io
+    from PIL import Image
+    img = Image.open(_io.BytesIO(dados)).convert("L")
+    lado = max(img.size)
+    if lado > MAX_LADO_PX:
+        fator = MAX_LADO_PX / lado
+        img = img.resize((max(1, int(img.width * fator)), max(1, int(img.height * fator))))
+    if not ocr_disponivel():
+        return [{"pagina": 1, "texto": "", "extra": "", "origem": "escaneada", "conf": 0.0}]
+    img = _orientar(img)
+    txt, conf = _ocr(img)
+    if len(txt.strip()) < MIN_CHARS:
+        img, txt, conf = _recuperar(img, txt, conf)
+    origem = "ocr" if txt.strip() else "escaneada"
+    return [{"pagina": 1, "texto": txt, "extra": "", "origem": origem, "conf": conf}]
+
+
 def _orientar(img):
     """Corrige a orientação da página (0/90/180/270) usando a detecção do
     Tesseract (OSD), ANTES de ler — resolve páginas escaneadas de lado/de
@@ -261,6 +288,13 @@ def extrair_paginas(arquivo, progresso=None):
     erro = [{"pagina": 1, "texto": "", "extra": "", "origem": "erro", "conf": 0.0}]
     if not pdf_bytes:
         return erro
+
+    # Foto/scan enviado como imagem (JPEG/PNG/…): lê por OCR direto, sem PDF.
+    if _eh_imagem(pdf_bytes):
+        try:
+            return _ler_imagem(pdf_bytes)
+        except Exception:
+            return erro
 
     paginas = []
     if pdfplumber is not None:

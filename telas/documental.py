@@ -17,6 +17,7 @@ import streamlit as st
 from telas import _calculo, _ui
 from regras import funil
 from regras import processo as proc
+from regras import wix
 from leitura import conferencia
 from leitura import ia
 from leitura import parecer as parecer_mod
@@ -127,31 +128,54 @@ _GRUPOS = [("cartao_cnpj", "Cartão CNPJ", False), ("estatuto", "Estatuto", True
 _CHAVES_GRUPO = {"Cartão CNPJ": "cartao_cnpj", "Estatuto": "estatuto", "Ata": "ata"}
 
 
-def _arquivos(dig):
-    """Uploads da organização: {grupo: [(nome, bytes)]}."""
-    st.markdown("**1 · Documentos** — suba os PDFs; o sistema lê (inclusive escaneados) e monta o parecer.")
+def _arquivos(dig, nome=None):
+    """Uploads da organização: {grupo: [(nome, bytes)]}. Aceita PDF e imagem
+    (foto) — muitas entidades enviam foto do documento."""
+    st.markdown("**1 · Documentos** — suba os arquivos (PDF ou foto); o sistema lê e monta o parecer.")
     arquivos = {}
     for (g, rot, multi), col in zip(_GRUPOS, st.columns(3)):
         with col:
-            up = st.file_uploader(rot + (" — pode mais de um" if multi else ""), type=["pdf"],
+            up = st.file_uploader(rot + (" — pode mais de um" if multi else ""),
+                                  type=["pdf", "jpg", "jpeg", "png", "webp"],
                                   accept_multiple_files=multi, key=f"up_{g}_{dig}")
         lst = up if multi else ([up] if up else [])
         arquivos[g] = [(u.name, u.getvalue()) for u in (lst or [])]
 
-    # Modo de teste: experimentar a análise com documentos de exemplo, sem subir nada.
+    # Fonte alternativa: documentos de exemplo OU puxados do Wix (mesma vaga).
     teste = st.session_state.get(f"_teste_{dig}")
     if not any(arquivos.values()) and teste:
         arquivos = teste
-        st.caption(":material/science: Modo de teste — usando documentos de exemplo.")
-    b = st.columns([1, 1, 2])
+        fonte = st.session_state.get(f"_fonte_{dig}", "documentos de exemplo")
+        st.caption(f":material/science: Usando {fonte} (não enviados manualmente).")
+    b = st.columns(3)
     if b[0].button("Testar com exemplos", icon=":material/science:", key=f"teste_{dig}"):
         st.session_state[f"_teste_{dig}"] = _carregar_exemplos()
+        st.session_state[f"_fonte_{dig}"] = "documentos de exemplo"
         st.session_state.get("_pareceres", {}).pop(dig, None)
         st.rerun()
-    if teste and b[1].button("Limpar teste", icon=":material/close:", key=f"limpateste_{dig}"):
+    if wix.ativo() and nome and b[1].button("Buscar documentos no Wix", icon=":material/cloud_download:",
+                                            key=f"wixdoc_{dig}"):
+        with st.spinner("Buscando os documentos desta entidade no Wix…"):
+            try:
+                arq, score = wix.documentos_da_entidade(nome)
+            except Exception as e:
+                arq, score = None, 0.0
+                st.session_state[f"_wixdocerr_{dig}"] = str(e)
+        if arq and any(arq.values()):
+            st.session_state[f"_teste_{dig}"] = arq
+            st.session_state[f"_fonte_{dig}"] = f"documentos do Wix (semelhança de nome {int(score*100)}%)"
+            st.session_state.get("_pareceres", {}).pop(dig, None)
+        elif f"_wixdocerr_{dig}" not in st.session_state:
+            st.session_state[f"_wixdocerr_{dig}"] = ("Não encontrei os documentos desta entidade no Wix "
+                                                     "(sem correspondência de nome). Suba manualmente.")
+        st.rerun()
+    if teste and b[2].button("Limpar", icon=":material/close:", key=f"limpateste_{dig}"):
         st.session_state.pop(f"_teste_{dig}", None)
+        st.session_state.pop(f"_fonte_{dig}", None)
         st.session_state.get("_pareceres", {}).pop(dig, None)
         st.rerun()
+    if st.session_state.get(f"_wixdocerr_{dig}"):
+        st.caption(":material/warning: " + st.session_state.pop(f"_wixdocerr_{dig}"))
     st.caption("Os arquivos ficam só nesta sessão (não são guardados). No banco fica apenas o resumo do parecer.")
     return arquivos
 
@@ -427,7 +451,7 @@ def _analisar(f, dig):
                        f"{parecer_mod.RESULTADO_TXT.get(salvo.get('resultado'), '—')} · "
                        f"{', '.join(salvo.get('arquivos', []))}")
 
-        arquivos = _arquivos(dig)
+        arquivos = _arquivos(dig, r["Entidade"])
         # "Conferir no documento": um botão de item pediu para abrir o PDF numa
         # página. Consumimos aqui, ANTES de montar a pré-visualização, para não
         # alterar o widget depois de criado (regra do Streamlit).

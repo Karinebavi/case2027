@@ -80,6 +80,7 @@ def mostrar():
     cidades = fcol4.multiselect("Cidade", sorted(c for c in f["Cidade"].unique() if c), placeholder="Todas")
     ver = st.radio("Ver", ["Todas", f"Só as {pool_size} da Fase 2", "Só as inelegíveis / fora do perfil"],
                    horizontal=True, label_visibility="collapsed")
+    por_bloco = st.toggle("Ver pontos por bloco (como a nota foi formada)", value=False, key="ver_blocos")
 
     vista = f.sort_values(["Nota", "Entidade"], ascending=[False, True])
     if busca:
@@ -99,8 +100,13 @@ def mostrar():
 
     disp = vista.copy()
     disp["Fase 2"] = disp["em_pool"].map(lambda x: "Sim" if x else "")
-    colunas = ["Posição", "Entidade", "Cidade", "UF", "Nota", "Anos", "Fase 2", "Situação", "Motivo"]
-    disp = disp[colunas].rename(columns={"Anos": "Tempo (anos)", "Motivo": "Motivo (se não segue)"})
+    BLOCO_COL = {"b1": "Elaboração", "b2": "Execução", "b3": "Equipe", "b4": "Receita",
+                 "b5": "Infra adm.", "b6": "Infra esp.", "b7": "Digital"}
+    bloco_cols = list(BLOCO_COL) if por_bloco else []
+    colunas = (["Posição", "Entidade", "Cidade", "UF", "Nota"] + bloco_cols
+               + ["Anos", "Fase 2", "Situação", "Motivo"])
+    disp = disp[colunas].rename(columns={**BLOCO_COL, "Anos": "Tempo (anos)",
+                                         "Motivo": "Motivo (se não segue)"})
 
     def _cor_sit(v):
         return CORES_SITUACAO.get(v, "")
@@ -114,15 +120,17 @@ def mostrar():
         .map(_cor_pool, subset=["Fase 2"])
         .format({"Tempo (anos)": "{:.1f}"})
     )
-    st.dataframe(
-        estilo, width="stretch", hide_index=True, height=460,
-        column_config={
-            "Posição": st.column_config.NumberColumn("Posição", width="small"),
-            "Nota": st.column_config.ProgressColumn("Nota", min_value=0, max_value=70, format="%d"),
-            "Fase 2": st.column_config.TextColumn("Fase 2", width="small"),
-            "Motivo (se não segue)": st.column_config.TextColumn("Motivo (se não segue)", width="large"),
-        },
-    )
+    col_cfg = {
+        "Posição": st.column_config.NumberColumn("Posição", width="small"),
+        "Nota": st.column_config.ProgressColumn("Nota", min_value=0, max_value=70, format="%d"),
+        "Fase 2": st.column_config.TextColumn("Fase 2", width="small"),
+        "Motivo (se não segue)": st.column_config.TextColumn("Motivo (se não segue)", width="large"),
+    }
+    for rot in BLOCO_COL.values():
+        if rot in disp.columns:
+            col_cfg[rot] = st.column_config.NumberColumn(rot, width="small", format="%d",
+                                                         help="Pontos deste bloco (máx. 10)")
+    st.dataframe(estilo, width="stretch", hide_index=True, height=460, column_config=col_cfg)
 
     # ----------------------- Ficha da entidade -----------------------
     st.divider()
