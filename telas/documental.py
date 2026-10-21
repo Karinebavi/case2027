@@ -36,24 +36,22 @@ def _carregar_exemplos():
         out[g] = [(nome, open(caminho, "rb").read())] if os.path.exists(caminho) else []
     return out
 
-# Cor da sugestão automática (com texto, não só cor — acessibilidade).
-_BADGE = {"verde": "OK", "amarelo": "Confira", "vermelho": "Falta"}
+# Status em palavra (não só cor — acessibilidade), didático para o mentor.
+_BADGE = {"verde": "Conforme", "amarelo": "Confira", "vermelho": "Falta"}
 
-# Conferência documental — (chave, rótulo). Agrupada por documento.
+# Conferência documental — só o essencial que o mentor decide, por documento.
 CRITERIOS = {
     "Cartão CNPJ": [
-        ("cnpj_receita", "Emitido diretamente da Receita Federal"),
-        ("cnpj_1ano", "Mais de 1 ano de funcionamento (fundação + atualizações cadastrais, até a data de hoje)"),
+        ("cnpj_receita", "Emitido pela Receita Federal"),
+        ("cnpj_1ano", "Mais de 1 ano de funcionamento"),
     ],
     "Estatuto": [
-        ("est_finalidade", "Finalidade esportiva nos artigos (modalidade / prática de esporte, desporto) como FIM — não como meio para outro fim"),
-        ("est_ordem", "Todos os artigos em ordem"),
+        ("est_finalidade", "Finalidade esportiva"),
         ("est_cartorio", "Registrado em cartório"),
     ],
     "Ata": [
-        ("ata_vigencia", "Em vigência (atenção se o prazo estiver vencendo)"),
+        ("ata_vigencia", "Mandato da diretoria vigente"),
         ("ata_cartorio", "Registrada em cartório"),
-        ("ata_selo", "Reconhecimento de selo/carimbo ou folha de registro do cartório"),
     ],
 }
 _TODAS = [(k, rot) for grupo in CRITERIOS.values() for (k, rot) in grupo]
@@ -319,8 +317,9 @@ def _mostrar_parecer(p, dig):
         st.warning("Documento escaneado e o leitor de imagem (OCR) não está disponível aqui: "
                    + ", ".join(p["sem_texto"]) + ". Confira esses manualmente.")
 
-    # Tudo o que é detalhe fica guardado num único lugar, fechado por padrão.
-    with st.expander("Detalhes e parecer completo"):
+    # O parecer oficial completo (tabelas, formato LIE) fica aqui, fechado.
+    # O mentor decide pelo resumo acima e pelo checklist; isto é só se quiser o detalhe.
+    with st.expander("Ver o parecer oficial completo (opcional)"):
         ajustes = p.get("ajustes", [])
         for cods, titulo in _SEV:
             itens = [a for a in ajustes if a.get("status") in cods]
@@ -411,20 +410,24 @@ def _leitura_ia(arquivos, dig, nome):
 
 
 def _item_conferencia(chave, cri, dig, nomes_doc):
-    """Abaixo de cada item do checklist: um status curto do que o sistema
-    encontrou e o botão que abre o documento na página exata (onde está o
-    trecho). Sem texto longo — a tela fica enxuta."""
+    """Abaixo de cada item: status curto, o essencial em linguagem simples, e
+    (só na finalidade) o trecho do estatuto. Botão para abrir o documento na
+    página exata. Pensado para o mentor bater o olho em 30."""
     if not cri:
-        st.caption("Sem documento/leitura para este item — confira manualmente.")
+        st.caption("Sem documento/leitura — confira manualmente.")
         return
     badge = _BADGE.get(cri.get("cor"), "")
     detalhe = (cri.get("detalhe") or "").strip()
-    if len(detalhe) > 110:
-        detalhe = detalhe[:110].rstrip() + "…"
+    limite = 150 if chave == "est_finalidade" else 90
+    if len(detalhe) > limite:
+        detalhe = detalhe[:limite].rstrip() + "…"
     st.caption(f"{badge} · {detalhe}" if detalhe else (badge or ""))
+    # O trecho só na finalidade esportiva (é o que o mentor mais precisa ver).
+    if chave == "est_finalidade" and cri.get("evidencia"):
+        st.caption(f"› trecho no estatuto: “{cri['evidencia']}”")
     arq, pag = cri.get("arquivo"), cri.get("pagina")
     if arq and arq in nomes_doc and pag:
-        if st.button(f"Conferir no documento (pág. {pag})", key=f"ir_{chave}_{dig}",
+        if st.button(f"Abrir no documento (pág. {pag})", key=f"ir_{chave}_{dig}",
                      icon=":material/menu_book:"):
             st.session_state[f"jump_{dig}"] = {"arquivo": arq, "pagina": int(pag)}
             st.rerun()
@@ -472,12 +475,12 @@ def _analisar(f, dig):
             _visualizar_pdfs(arquivos, dig, aberto=False)
         crit = conferencia.criterios(p) if p else {}
 
-        st.markdown("**2 · Conferência do mentor** — o sistema já marcou o que encontrou; confirme ou corrija. "
-                    "Clique em *Conferir no documento* para abrir o PDF ao lado, na página exata.")
+        st.markdown("**Confira e marque** — o sistema já pré-marcou o que encontrou "
+                    "(Conforme · Confira · Falta). Corrija se precisar e aprove ou exclua.")
         nomes_doc = {n for _g, lst in arquivos.items() for n, _b in lst}
         novos = {}
         for grupo, itens in CRITERIOS.items():
-            st.markdown(f"*{grupo}*")
+            st.markdown(f"**:material/description: {grupo}**")
             for chave, rot in itens:
                 cri = crit.get(chave)
                 k = f"chk_{chave}_{dig}"
