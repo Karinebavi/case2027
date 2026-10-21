@@ -45,10 +45,10 @@ def _css():
     .login-marca { text-align:center; font-family:'Baloo 2',sans-serif; font-weight:800; font-size:27px; color:#9333EA; letter-spacing:-.5px; }
     .login-pill {
         width: max-content; margin: 10px auto 2px; padding: 4px 12px; border-radius: 999px;
-        background: #ECFDF5; color: #047857; font-size: 11px; font-weight: 700; letter-spacing:.5px;
-        border: 1px solid #A7F3D0;
+        background: #F2F0FC; color: #9333EA; font-size: 11px; font-weight: 700; letter-spacing:.5px;
+        border: 1px solid #E7E3F3;
     }
-    .login-pill .dot { color:#10B981; }
+    .login-pill .dot { color:#9333EA; }
     .login-h { text-align:center; font-family:'Baloo 2',sans-serif; font-size:28px; font-weight:800; color:#2A1A46; margin:12px 0 4px; }
     .login-sub { text-align:center; color:#6B6780; font-size:14px; margin:0 0 18px; }
     .login-lab { font-weight:700; color:#3E087C; font-size:13px; margin:2px 0 -6px; }
@@ -72,7 +72,7 @@ def _css():
     }
     [data-testid="stForm"] .stFormSubmitButton > button:hover { filter:brightness(1.06); }
     [data-testid="stForm"] .stFormSubmitButton > button:active { transform: translateY(1px); }
-    .login-foot { text-align:center; color:#9A94B0; font-size:12px; margin-top:14px; }
+    .login-foot { text-align:center; color:#6B6780; font-size:12px; margin-top:14px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -93,8 +93,13 @@ def mostrar():
         st.markdown('<div class="login-foot">Uso interno · Instituto Imaginação</div>', unsafe_allow_html=True)
 
     if entrar:
-        if auth.conferir(senha):
+        espera = auth.espera_restante()
+        if espera > 0:
+            st.error(f"Muitas tentativas. Aguarde {int(espera) + 1}s e tente de novo.")
+        elif auth.conferir(senha):
+            auth.limpar_tentativas()
             auth.entrar()
             st.rerun()
         else:
+            auth.registrar_falha()
             st.error("Senha incorreta. Tente novamente.")

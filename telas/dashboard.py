@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Tela 5 — Dashboard
+Tela 7 — Dashboard
 ==================
 Visão completa das inscrições em gráficos: situação, notas, regiões, mapa do
 Brasil, dias com mais inscrições, nuvem de cidades e o perfil das OSCs
@@ -15,14 +15,13 @@ import streamlit as st
 from telas import _calculo, _ui
 from regras import pontuacao, geo, feedback
 from regras.memoria import so_digitos
+import tema
 
-AZUL = "#1F4E79"
-DOURADO = "#B0863B"
-SEQ = ["#1F4E79", "#3B6EA5", "#6FA8DC", "#B0863B", "#8FB08C", "#9E9E9E", "#C46B6B"]
-COR_SITUACAO = {
-    "Classificada": "#2E7D32", "Fila de espera": "#C99A2E",
-    "Fora do perfil": "#9E9E9E", "Inelegível": "#B84A4A",
-}
+# Cores dos gráficos na identidade do CASE (fonte única em tema.py).
+AZUL = tema.PRIMARIA_GRAF          # roxo da marca (1ª cor de destaque)
+DOURADO = tema.SECUNDARIA_GRAF     # laranja da marca (2ª cor / comparativo)
+SEQ = tema.SEQ_CASE                # sequência de categorias
+COR_SITUACAO = tema.SEMAFORO_FORTE # situação (barras/fatias)
 
 
 _CONTADOR = [0]
@@ -84,20 +83,16 @@ def mostrar():
         st.warning("Nada para mostrar com esse filtro.")
         return
 
+    # Sem divisores entre todas as seções (cada uma tem seu subtítulo) — menos
+    # "serra" visual; só um antes do bloco de apoio no fim.
     _kpis(work)
-    st.divider()
     _situacao_e_notas(work)
-    st.divider()
     _regioes(work)
-    st.divider()
     _mapa(work)
-    st.divider()
     _tempo_e_cidades(work)
-    st.divider()
     _perfil_oscs(work)
     st.divider()
     _alertas(work)
-    st.divider()
     _feedback_equipe()
 
 
@@ -179,7 +174,7 @@ def _mapa(work):
         return
     fig = px.choropleth(
         dfu, geojson=gj, locations="UF", featureidkey="properties.sigla",
-        color="Inscrições", color_continuous_scale="Blues",
+        color="Inscrições", color_continuous_scale=tema.ESCALA_ROXO,
         hover_name="Estado", hover_data={"UF": False, "Inscrições": True},
     )
     fig.update_geos(fitbounds="locations", visible=False, bgcolor="rgba(0,0,0,0)")
@@ -362,6 +357,6 @@ def _wordcloud(freqs):
         return None
     from wordcloud import WordCloud
     wc = WordCloud(width=900, height=360, background_color="white",
-                   colormap="Blues", prefer_horizontal=0.9, collocations=False)
+                   colormap="Purples", prefer_horizontal=0.9, collocations=False)
     wc.generate_from_frequencies(freqs)
     return wc.to_array()

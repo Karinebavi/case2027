@@ -29,8 +29,11 @@ Fontes da API (dev.wix.com):
 - Query submissions: POST /form-submission-service/v4/submissions/namespace/query
 - Get form (para mapear target->rótulo): GET /form-schema-service/v4/forms/{id}
 """
+import ipaddress
 import os
 import re
+import socket
+from urllib.parse import urlparse
 
 import pandas as pd
 import requests
@@ -75,11 +78,11 @@ def _headers(c):
 
 
 def _erro_http(r, acao):
-    try:
-        msg = r.json().get("message") or r.text[:200]
-    except Exception:
-        msg = r.text[:200]
-    return f"Wix: falha em {acao} (HTTP {r.status_code}). {msg}"
+    # Não expõe o corpo da resposta (pode conter dados) — só o código e uma dica.
+    dica = {401: "confira a API key.", 403: "a chave não tem permissão ou falta o site_id.",
+            404: "recurso não encontrado.", 428: "o app Wix Forms não está instalado no site."}
+    return (f"Wix: falha em {acao} (HTTP {r.status_code}). "
+            + dica.get(r.status_code, "veja o guia docs/ATIVAR-WIX.md."))
 
 
 def listar_formularios(c=None):
@@ -226,10 +229,47 @@ def _grupo_do_campo(rotulo, target):
     return None  # ex.: "Diretrizes" -> não entra na conferência
 
 
+_MAX_DOWNLOAD = 40 * 1024 * 1024          # teto por arquivo (40 MB)
+_HOSTS_WIX = ("wixstatic.com", "wixmp.com", "wix.com", "wixsite.com")
+
+
+def _url_segura(url):
+    """Só permite baixar de https nos domínios do Wix, e nunca de IP interno
+    (evita SSRF — a URL vem da submissão, controlada pelo candidato)."""
+    try:
+        p = urlparse(url)
+    except Exception:
+        return False
+    host = (p.hostname or "").lower()
+    if p.scheme != "https" or not host:
+        return False
+    if not any(host == h or host.endswith("." + h) for h in _HOSTS_WIX):
+        return False
+    # Defesa em profundidade: se o host (já restrito aos domínios do Wix) resolver
+    # para um IP interno, bloqueia. Se o DNS falhar, confia na allowlist de domínio.
+    try:
+        for *_r, sa in socket.getaddrinfo(host, 443):
+            ip = ipaddress.ip_address(sa[0])
+            if (ip.is_private or ip.is_loopback or ip.is_link_local
+                    or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+                return False
+    except Exception:
+        pass
+    return True
+
+
 def _baixar(url):
-    r = requests.get(url, timeout=120)
-    r.raise_for_status()
-    return r.content
+    if not _url_segura(url):
+        raise RuntimeError("URL de documento não permitida (fora dos domínios do Wix).")
+    total, pedacos = 0, []
+    with requests.get(url, timeout=60, stream=True) as r:
+        r.raise_for_status()
+        for chunk in r.iter_content(65536):
+            total += len(chunk)
+            if total > _MAX_DOWNLOAD:
+                raise RuntimeError("Documento excede o tamanho máximo permitido (40 MB).")
+            pedacos.append(chunk)
+    return b"".join(pedacos)
 
 
 def _resolver_form_docs(c):

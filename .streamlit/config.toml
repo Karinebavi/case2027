@@ -10,3 +10,7 @@ font = "sans serif"
 
 [browser]
 gatherUsageStats = false
+
+[server]
+# Documentos têm poucos MB; limita o upload para evitar arquivos gigantes.
+maxUploadSize = 50

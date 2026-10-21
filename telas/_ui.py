@@ -2,6 +2,8 @@
 """Peças de interface reaproveitadas pelas telas (cabeçalho, ficha)."""
 import streamlit as st
 
+import tema
+
 BLOCOS = ["Elaboração", "Execução", "Equipe", "Receita", "Infra adm.", "Infra esp.", "Digital"]
 COLS_B = ["b1", "b2", "b3", "b4", "b5", "b6", "b7"]
 
@@ -85,11 +87,11 @@ def ficha(df, entidade, dados=None, mapa=None):
     fig = go.Figure()
     fig.add_trace(go.Scatterpolar(
         r=valores + [valores[0]], theta=BLOCOS + [BLOCOS[0]],
-        fill="toself", name=entidade[:24], line_color="#1F4E79",
+        fill="toself", name=entidade[:24], line_color=tema.ROXO,
     ))
     fig.add_trace(go.Scatterpolar(
         r=medias + [medias[0]], theta=BLOCOS + [BLOCOS[0]],
-        name="Média das classificáveis", line_color="#B0863B",
+        name="Média das classificáveis", line_color=tema.LARANJA,
     ))
     fig.update_layout(
         polar=dict(radialaxis=dict(range=[0, 10], tickvals=[0, 2, 4, 6, 8, 10])),

@@ -63,7 +63,9 @@ def _rest(tabela):
 
 def _checar(resp, oque):
     if resp.status_code >= 300:
-        raise NuvemErro(f"{oque}: HTTP {resp.status_code} — {resp.text[:300]}")
+        # O corpo da resposta pode conter dados — fica só no log do servidor.
+        print(f"[nuvem] {oque}: HTTP {resp.status_code} — {resp.text[:300]}")
+        raise NuvemErro(f"{oque}: HTTP {resp.status_code}")
     return resp
 
 
@@ -160,9 +162,9 @@ def historico(limite=200):
 
 def parar_com_erro(erro):
     """Mostra o problema e interrompe a tela (para nunca sobrescrever dado bom)."""
+    print(f"[nuvem] parar_com_erro: {erro}")   # detalhe técnico só no log do servidor
     st.error(
         "Não consegui acessar o banco de dados na nuvem, então parei para não "
         "perder nada. Tente recarregar a página em 1 minuto. Se o Supabase ficou "
-        "uma semana sem uso ele pausa: entre em supabase.com e clique em 'Restore'.\n\n"
-        f"Detalhe técnico: {erro}")
+        "uma semana sem uso ele pausa: entre em supabase.com e clique em 'Restore'.")
     st.stop()

@@ -116,11 +116,20 @@ def _eh_imagem(dados):
             or b[:4] == b"GIF8" or b[:2] == b"BM" or (b[:4] == b"RIFF" and b[8:12] == b"WEBP"))
 
 
+MAX_PIXELS_IMG = 60_000_000   # ~60 MP: cobre foto de celular; barra "bomba" de descompressão
+
+
 def _ler_imagem(dados):
     """OCR direto numa imagem (não-PDF). Devolve a lista de páginas (uma)."""
     import io as _io
     from PIL import Image
-    img = Image.open(_io.BytesIO(dados)).convert("L")
+    Image.MAX_IMAGE_PIXELS = MAX_PIXELS_IMG   # levanta DecompressionBombError acima disso
+    try:
+        img = Image.open(_io.BytesIO(dados))
+        img.load()
+        img = img.convert("L")
+    except Exception:   # inclui DecompressionBombError e imagem corrompida
+        return [{"pagina": 1, "texto": "", "extra": "", "origem": "erro", "conf": 0.0}]
     lado = max(img.size)
     if lado > MAX_LADO_PX:
         fator = MAX_LADO_PX / lado

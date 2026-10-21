@@ -14,6 +14,7 @@ import streamlit as st
 from telas import _calculo, _ui
 from regras import funil, contato
 from regras import processo as proc
+import tema
 from regras.memoria import so_digitos
 
 ASSUNTO = "CASE 2027 — Instituto Imaginação"
@@ -100,10 +101,11 @@ def _cartao(f, dig, contatos):
 
     with st.container(border=True):
         badge = "SELECIONADA" if selecionada else "RESERVA"
-        cor = "#9333EA" if selecionada else "#FF9A2D"
+        # Contraste WCAG: branco sobre roxo (ok); texto escuro sobre laranja.
+        cor, txt = (tema.ROXO, "#FFFFFF") if selecionada else (tema.LARANJA, tema.ROXO_ESCURO)
         st.markdown(
-            f"<span style='background:{cor};color:#fff;padding:2px 8px;border-radius:4px;"
-            f"font-size:12px;font-weight:600'>{badge}</span>", unsafe_allow_html=True)
+            f"<span style='background:{cor};color:{txt};padding:2px 8px;border-radius:4px;"
+            f"font-size:12px;font-weight:700'>{badge}</span>", unsafe_allow_html=True)
         st.markdown(f"### {r['Entidade']}")
         st.caption(f"Posição {int(r['Posição'])} · nota {int(r['Nota'])} · {r['Cidade']}/{r['UF']} · "
                    f"{r['Região']} · {r['Anos']} anos")
@@ -142,9 +144,9 @@ def _cartao(f, dig, contatos):
             corpo = contato.modelo_selecionada(r["Entidade"])
             bc = st.columns(2)
             if email:
-                bc[0].link_button("Enviar e-mail", contato.link_email(email, ASSUNTO, corpo), use_container_width=True)
+                bc[0].link_button("Enviar e-mail", contato.link_email(email, ASSUNTO, corpo), width="stretch")
             if whats:
-                bc[1].link_button("WhatsApp", contato.link_whatsapp(whats, corpo), use_container_width=True)
+                bc[1].link_button("WhatsApp", contato.link_whatsapp(whats, corpo), width="stretch")
 
         # ---- Dados da entidade ----
         linhas_dados = []
@@ -164,9 +166,10 @@ def _cartao(f, dig, contatos):
             linhas_dados.append(f"**Beneficiários atendidos:** {ct['beneficiarios']}")
         if linhas_dados:
             st.markdown("**Dados da entidade**")
+            # Sem unsafe_allow_html: o Streamlit escapa HTML dos dados da inscrição
+            # (evita XSS com valor malicioso num campo do formulário).
             for ld in linhas_dados:
-                st.markdown(f"<div style='font-size:13px;color:#4A4668'>{ld}</div>",
-                            unsafe_allow_html=True)
+                st.markdown(ld)
 
         with st.expander("Pontuação por bloco (radar)"):
             _ui.ficha(f, r["Entidade"])
@@ -206,10 +209,10 @@ def _comunicacao(f, contatos):
     LIMITE = 40
     c1, c2 = st.columns(2)
     link = contato.link_email(emails[:LIMITE], assunto, corpo, oculto=True)
-    c1.link_button(f"Abrir e-mail em Cco (até {LIMITE})", link, use_container_width=True)
+    c1.link_button(f"Abrir e-mail em Cco (até {LIMITE})", link, width="stretch")
     tabela = pd.DataFrame({"Entidade": [n for n, _ in regs], "E-mail": [_email_de(c) for _, c in regs]})
     c2.download_button("Baixar lista de contatos (CSV)", tabela.to_csv(index=False).encode("utf-8"),
-                       "contatos_grupo_case2027.csv", "text/csv", use_container_width=True)
+                       "contatos_grupo_case2027.csv", "text/csv", width="stretch")
     if len(emails) > LIMITE:
         st.caption(f"O botão de e-mail cobre os primeiros {LIMITE} (limite do link). "
                    "Para a lista toda, baixe o CSV e use mala direta.")

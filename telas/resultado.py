@@ -11,15 +11,12 @@ import streamlit as st
 
 from telas import _calculo, _ui
 from regras import validacao, exportacao
+import tema
 
 SITUACOES = ["Classificada", "Fila de espera", "Fora do perfil", "Inelegível"]
 
-CORES_SITUACAO = {
-    "Classificada": "background-color:#E4F1E8;color:#1B5E20",
-    "Fila de espera": "background-color:#FBF1DD;color:#7A5412",
-    "Fora do perfil": "background-color:#ECECEC;color:#555555",
-    "Inelegível": "background-color:#F6E4E4;color:#8A2A2A",
-}
+# Cor da situação derivada da fonte única (tema.SEMAFORO).
+CORES_SITUACAO = {k: f"background-color:{bg};color:{fg}" for k, (bg, fg) in tema.SEMAFORO.items()}
 
 
 def mostrar():
@@ -49,14 +46,12 @@ def mostrar():
     c[2].metric(f"Vão à Fase 2 (as {pool_size} melhores)", no_pool)
     c[3].metric("Vagas finais", vagas)
 
-    ca, cb, cc = st.columns([1, 1, 2])
+    ca, cb, cc = st.columns([1, 1, 2], vertical_alignment="bottom")
     ca.number_input("Vagas finais", min_value=1, step=1, key="vagas",
                     help="Meta ao final de todo o processo.")
     cb.number_input("Quantas vão à Fase 2 (documental)", min_value=1, step=1, key="pool_fase2",
                     help="As melhores colocadas entram na análise documental. As demais ficam na fila (repescagem automática).")
     with cc:
-        st.write("")
-        st.write("")
         st.download_button(
             "Baixar planilha de pontuação (Excel)",
             exportacao.montar_planilha(f, vagas),
@@ -73,14 +68,15 @@ def mostrar():
         "as demais ficam na fila. A cor da situação mostra o porquê de quem não segue."
     )
 
-    fcol1, fcol2, fcol3, fcol4 = st.columns([2, 1, 1, 1])
-    busca = fcol1.text_input("Buscar entidade", placeholder="digite parte do nome...")
-    situacoes = fcol2.multiselect("Situação", SITUACOES, placeholder="Todas")
-    regioes = fcol3.multiselect("Região", sorted(r for r in f["Região"].unique() if r), placeholder="Todas")
-    cidades = fcol4.multiselect("Cidade", sorted(c for c in f["Cidade"].unique() if c), placeholder="Todas")
+    busca = st.text_input("Buscar entidade", placeholder="digite parte do nome...")
     ver = st.radio("Ver", ["Todas", f"Só as {pool_size} da Fase 2", "Só as inelegíveis / fora do perfil"],
                    horizontal=True, label_visibility="collapsed")
     por_bloco = st.toggle("Ver pontos por bloco (como a nota foi formada)", value=False, key="ver_blocos")
+    with st.expander("Mais filtros (situação, região, cidade)"):
+        fcol2, fcol3, fcol4 = st.columns(3)
+        situacoes = fcol2.multiselect("Situação", SITUACOES, placeholder="Todas")
+        regioes = fcol3.multiselect("Região", sorted(r for r in f["Região"].unique() if r), placeholder="Todas")
+        cidades = fcol4.multiselect("Cidade", sorted(c for c in f["Cidade"].unique() if c), placeholder="Todas")
 
     vista = f.sort_values(["Nota", "Entidade"], ascending=[False, True])
     if busca:
@@ -112,7 +108,7 @@ def mostrar():
         return CORES_SITUACAO.get(v, "")
 
     def _cor_pool(v):
-        return "background-color:#E7EEF6;color:#1F4E79;font-weight:600" if v == "Sim" else ""
+        return f"background-color:{tema.LAVANDA};color:{tema.ROXO};font-weight:600" if v == "Sim" else ""
 
     estilo = (
         disp.style

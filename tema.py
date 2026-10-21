@@ -15,12 +15,33 @@ LARANJA = "#FF9A2D"         # acento (traço dos títulos, como no site)
 LAVANDA = "#F2F0FC"         # superfície suave
 LAVANDA_CHIP = "#EAE4FB"
 
+# --- Paletas para GRÁFICOS e ESTADOS (use estas; não escreva hex solto nas telas) ---
+# Sequência de categorias nos gráficos (na marca: roxo, laranja, lavandas, escuro).
+SEQ_CASE = ["#9333EA", "#FF9A2D", "#B57BEE", "#3E087C", "#C2410C", "#6B6780", "#D8D8FF"]
+ESCALA_ROXO = ["#F2F0FC", "#9333EA"]      # escala contínua (mapa/heatmap)
+PRIMARIA_GRAF = ROXO                       # 1ª cor de destaque em gráficos
+SECUNDARIA_GRAF = LARANJA                  # 2ª cor (comparativo/média)
+
+# Cor da SITUAÇÃO — fonte ÚNICA (antes estava repetida em 3 telas, divergindo).
+# Versão pastel (fundo, texto) para células de tabela:
+SEMAFORO = {
+    "Classificada": ("#E4F1E8", "#1B5E20"),
+    "Fila de espera": ("#FBF1DD", "#7A5412"),
+    "Fora do perfil": ("#ECECEC", "#555555"),
+    "Inelegível": ("#F6E4E4", "#8A2A2A"),
+}
+# Versão saturada (uma cor) para barras/fatias de gráfico:
+SEMAFORO_FORTE = {
+    "Classificada": "#2E7D32", "Fila de espera": "#C99A2E",
+    "Fora do perfil": "#9E9E9E", "Inelegível": "#B84A4A",
+}
+
 
 def aplicar():
     st.markdown(
         f"""
         <style>
-        @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Nunito+Sans:wght@400;600;700;900&family=Poppins:wght@600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Nunito+Sans:wght@400;600;700;900&display=swap');
 
         :root {{
             --bg: #FFFFFF;
@@ -37,8 +58,8 @@ def aplicar():
             --shadow: 0 1px 2px rgba(42, 25, 70, 0.04), 0 1px 3px rgba(42, 25, 70, 0.07);
         }}
 
-        /* Inter via herança a partir do .stApp; controles de formulário recebem
-           explicitamente. NÃO citar 'span' nem classes st-* (quebra os ícones). */
+        /* Corpo em Nunito Sans; controles de formulário recebem explicitamente.
+           NÃO citar 'span' nem classes st-* (quebra os ícones Material Symbols). */
         html, body, .stApp, button, input, textarea, select {{
             font-family: 'Nunito Sans', -apple-system, Segoe UI, Roboto, sans-serif;
             font-size: 15.5px;
@@ -46,10 +67,10 @@ def aplicar():
         .stApp {{ background: var(--bg); color: var(--fg); }}
         .block-container {{ max-width: 1160px; padding-top: 1.1rem; }}
 
-        /* Títulos na fonte amigável (Poppins) e no roxo escuro do CASE.
+        /* Títulos na fonte amigável (Baloo 2) e no roxo escuro do CASE.
            Prefixo .stApp + !important para vencer o estilo padrão do Streamlit. */
         .stApp h1, .stApp h2, .stApp h3, .stApp h4 {{
-            font-family: 'Baloo 2', 'Poppins', sans-serif !important;
+            font-family: 'Baloo 2', sans-serif !important;
             color: var(--heading) !important; font-weight: 700; letter-spacing: 0;
         }}
         .stApp h1 {{ font-size: 2.15rem; line-height: 1.15; }}

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Tela 3 — Análises (interesse do patrocinador)
+Tela 4 — Análises (interesse do patrocinador)
 =============================================
 Aqui saem as organizações que estão na Fase 2 (as melhores do ranking) já com
 a coluna de interesse do patrocinador. Você pode marcar o interesse de dois

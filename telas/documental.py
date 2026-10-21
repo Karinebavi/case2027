@@ -273,10 +273,11 @@ _SEV = [(("BLOQUEANTE",), "Impede a aprovação"),
         (("ATENCAO", "ATENCAO_MENOR"), "Conferir com atenção")]
 
 
+# Gradientes escurecidos para o texto branco passar no contraste (WCAG AA).
 _RES_ESTILO = {
-    "APTO": ("APTO", "linear-gradient(105deg,#1E9E5A 0%,#13864A 100%)"),
-    "APTO_COM_AJUSTES": ("APTO COM AJUSTES", "linear-gradient(105deg,#F0901E 0%,#E07412 100%)"),
-    "NAO_APTO": ("NÃO APTO", "linear-gradient(105deg,#D84B4B 0%,#BE3636 100%)"),
+    "APTO": ("APTO", "linear-gradient(105deg,#1B8A4E 0%,#13743F 100%)"),
+    "APTO_COM_AJUSTES": ("APTO COM AJUSTES", "linear-gradient(105deg,#C25E00 0%,#A64D00 100%)"),
+    "NAO_APTO": ("NÃO APTO", "linear-gradient(105deg,#C0392B 0%,#A5281B 100%)"),
 }
 
 
