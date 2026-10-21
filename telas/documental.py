@@ -18,6 +18,7 @@ from telas import _calculo, _ui
 from regras import funil
 from regras import processo as proc
 from leitura import conferencia
+from leitura import ia
 from leitura import parecer as parecer_mod
 
 # Documentos de exemplo para o "modo de teste" (experimentar a análise sem docs reais).
@@ -248,39 +249,6 @@ _SEV = [(("BLOQUEANTE",), "Impede a aprovação"),
         (("ATENCAO", "ATENCAO_MENOR"), "Conferir com atenção")]
 
 
-# Painéis das 3 regras centrais — mesma fonte do checklist (conferencia.criterios),
-# para o card e o checklist NUNCA se contradizerem.
-_COR_BADGE = {
-    "verde": ("Conforme", "green", "check_circle"),
-    "amarelo": ("Confira", "orange", "warning"),
-    "vermelho": ("Pendência", "red", "error"),
-}
-
-
-def _painel_regra(container, icone, titulo, cri):
-    with container.container(border=True):
-        st.markdown(f":material/{icone}: **{titulo}**")
-        if cri:
-            rot, cor, ic = _COR_BADGE.get(cri.get("cor"), ("Sem dado", "gray", "help"))
-            st.badge(rot, icon=f":material/{ic}:", color=cor)
-            st.caption(cri.get("detalhe") or "")
-            ev = cri.get("evidencia")
-            if ev:
-                st.caption(f"› trecho no documento: “{ev}”")
-        else:
-            st.badge("Sem dado", icon=":material/help:", color="gray")
-            st.caption("Documento não recebido ou não lido.")
-
-
-def _paineis_regras(p):
-    crit = conferencia.criterios(p)
-    st.markdown("**Verificação das regras do edital**")
-    c1, c2, c3 = st.columns(3)
-    _painel_regra(c1, "sports_soccer", "Finalidade esportiva (FIM)", crit.get("est_finalidade"))
-    _painel_regra(c2, "event_available", "Tempo de funcionamento", crit.get("cnpj_1ano"))
-    _painel_regra(c3, "verified", "Mandato / ata de posse", crit.get("ata_vigencia"))
-
-
 _RES_ESTILO = {
     "APTO": ("APTO", "linear-gradient(105deg,#1E9E5A 0%,#13864A 100%)"),
     "APTO_COM_AJUSTES": ("APTO COM AJUSTES", "linear-gradient(105deg,#F0901E 0%,#E07412 100%)"),
@@ -289,103 +257,146 @@ _RES_ESTILO = {
 
 
 def _resumo_destaque(p):
-    """Cartão grande e colorido no topo: o resultado, os números e os três
-    destaques (finalidade, tempo de funcionamento, mandato) com o trecho."""
+    """Cartão enxuto no topo: só o resultado e a frase. Os detalhes de cada
+    regra ficam no checklist abaixo (sem repetir a mesma informação três vezes)."""
     rotulo, fundo = _RES_ESTILO.get(p["resultado"], ("—", "linear-gradient(105deg,#7A7A7A,#5E5E5E)"))
     ach = p.get("achados", [])
-    n_ok = sum(1 for a in ach if a["status"] == "OK")
     n_at = sum(1 for a in ach if a["status"] in ("ATENCAO", "ATENCAO_MENOR"))
     n_pd = sum(1 for a in ach if a["status"] == "PENDENCIA")
     n_bl = sum(1 for a in ach if a["status"] == "BLOQUEANTE")
-
-    crit = conferencia.criterios(p)
-    rotulos = [("est_finalidade", "Finalidade esportiva"), ("cnpj_1ano", "Tempo de funcionamento"),
-               ("ata_vigencia", "Mandato / ata de posse")]
-    linhas = []
-    for chave, nome in rotulos:
-        c = crit.get(chave)
-        if not c:
-            continue
-        detalhe = html.escape(c.get("detalhe") or "")
-        ev = c.get("evidencia")
-        tr = f'<span class="tr">“{html.escape(ev[:150])}”</span>' if ev else ""
-        linhas.append(f'<div class="d"><b>{html.escape(nome)}:</b> {detalhe}{tr}</div>')
-    destaques = f'<div class="destaques">{"".join(linhas)}</div>' if linhas else ""
+    partes = []
+    if n_bl:
+        partes.append(f"{n_bl} bloqueio(s)")
+    if n_pd:
+        partes.append(f"{n_pd} pendência(s)")
+    if n_at:
+        partes.append(f"{n_at} ponto(s) de atenção")
+    linha = " · ".join(partes) if partes else "nenhum ponto a corrigir"
 
     st.html(
         f'<div class="case-resumo" style="background:{fundo}">'
         f'<div class="selo">PARECER DA CONFERÊNCIA</div>'
         f'<div class="res">{rotulo}</div>'
         f'<div class="ent">{html.escape(p.get("entidade", ""))}</div>'
-        f'<div class="fr">{html.escape(p.get("frase", ""))}</div>'
-        f'{destaques}</div>')
-
-    c = st.columns(4)
-    c[0].metric("Conformes", n_ok)
-    c[1].metric("Atenção", n_at)
-    c[2].metric("Pendências", n_pd)
-    c[3].metric("Bloqueios", n_bl)
+        f'<div class="fr">{html.escape(linha)}</div>'
+        f'</div>')
 
 
 def _mostrar_parecer(p, dig):
     _resumo_destaque(p)
 
-    _paineis_regras(p)
-
-    # Visão rápida: o que chegou e o que falta.
     receb = [d.get("arquivo", "") for d in p.get("documentos_recebidos", [])]
     falt = p.get("documentos_faltantes", [])
-    cols = st.columns(2)
-    cols[0].caption("**Recebidos:** " + (", ".join(receb) if receb else "—"))
-    cols[1].caption("**Faltando:** " + (", ".join(falt) if falt else "nenhum"))
+    st.caption("**Recebidos:** " + (", ".join(receb) if receb else "—")
+               + "  ·  **Faltando:** " + (", ".join(falt) if falt else "nenhum"))
 
     if p.get("sem_texto") and not p.get("ocr_disponivel"):
         st.warning("Documento escaneado e o leitor de imagem (OCR) não está disponível aqui: "
                    + ", ".join(p["sem_texto"]) + ". Confira esses manualmente.")
 
-    # Pontos agrupados por gravidade, em linguagem simples (código da regra discreto).
-    ajustes = p.get("ajustes", [])
-    for cods, titulo in _SEV:
-        itens = [a for a in ajustes if a.get("status") in cods]
-        if not itens:
-            continue
-        st.markdown(f"**{titulo}**")
-        for a in itens:
-            st.markdown(f"- {a.get('texto', '')}")
-
-    infos = [a for a in ajustes if a.get("status") == "INFO"]
-    if infos:
-        with st.expander("Observações (opcional)"):
+    # Tudo o que é detalhe fica guardado num único lugar, fechado por padrão.
+    with st.expander("Detalhes e parecer completo"):
+        ajustes = p.get("ajustes", [])
+        for cods, titulo in _SEV:
+            itens = [a for a in ajustes if a.get("status") in cods]
+            if not itens:
+                continue
+            st.markdown(f"**{titulo}**")
+            for a in itens:
+                st.markdown(f"- {a.get('texto', '')}")
+        infos = [a for a in ajustes if a.get("status") == "INFO"]
+        if infos:
+            st.markdown("**Observações**")
             for a in infos:
                 st.markdown(f"- {a.get('texto', '')}")
 
-    with st.expander("Parecer completo (formato oficial da conferência)"):
+        st.markdown("**Parecer completo (formato oficial)**")
         texto = parecer_mod.markdown(p)
         texto = "\n".join("##" + ln if ln.startswith("#") else ln for ln in texto.split("\n"))
         st.markdown(texto, unsafe_allow_html=True)
 
-    c1, c2 = st.columns(2)
-    nome = "".join(ch for ch in p["entidade"] if ch.isalnum() or ch in " -_")[:40].strip().replace(" ", "_")
-    # BOM (﻿) para o Word/Bloco de Notas do Windows abrir com acentos corretos.
-    c1.download_button("Baixar parecer (.md)", ("﻿" + parecer_mod.markdown(p)).encode("utf-8"),
-                       f"parecer_{nome}.md", "text/markdown", key=f"dlmd_{dig}", width="stretch")
-    c2.download_button("Baixar parecer (.json)",
-                       json.dumps(parecer_mod.json_publico(p), ensure_ascii=False, indent=2, default=str).encode("utf-8"),
-                       f"parecer_{nome}.json", "application/json", key=f"dljs_{dig}", width="stretch")
+        c1, c2 = st.columns(2)
+        nome = "".join(ch for ch in p["entidade"] if ch.isalnum() or ch in " -_")[:40].strip().replace(" ", "_")
+        # BOM (﻿) para o Word/Bloco de Notas do Windows abrir com acentos corretos.
+        c1.download_button("Baixar parecer (.md)", ("﻿" + parecer_mod.markdown(p)).encode("utf-8"),
+                           f"parecer_{nome}.md", "text/markdown", key=f"dlmd_{dig}", width="stretch")
+        c2.download_button("Baixar parecer (.json)",
+                           json.dumps(parecer_mod.json_publico(p), ensure_ascii=False, indent=2, default=str).encode("utf-8"),
+                           f"parecer_{nome}.json", "application/json", key=f"dljs_{dig}", width="stretch")
+
+
+def _simnao(v):
+    return "Sim" if v is True else ("Não" if v is False else "não identificado")
+
+
+def _leitura_ia(arquivos, dig, nome):
+    """Leitura dos documentos por IA (apoio opcional). Roda só quando o mentor
+    clica (controle de custo) e guarda o resultado na sessão."""
+    if not ia.disponivel():
+        st.caption(":material/smart_toy: Leitura por IA desligada — para ativar, configure a "
+                   "seção [ia] no Secrets (Claude na nuvem ou Ollama local).")
+        return
+    sig = conferencia.assinatura(arquivos)
+    guardado = st.session_state.get(f"_ia_{dig}")
+    atual = guardado if (guardado and guardado.get("sig") == sig) else None
+
+    st.markdown("**Leitura por IA (apoio)**")
+    if atual is None:
+        if st.button("Ler com IA", key=f"ia_btn_{dig}", icon=":material/smart_toy:"):
+            with st.spinner("A IA está lendo os documentos…"):
+                res, err = ia.analisar(arquivos, nome_entidade=nome)
+            st.session_state[f"_ia_{dig}"] = {"sig": sig, "res": res, "err": err}
+            st.rerun()
+        st.caption("A IA lê e resume o que encontrou; as regras acima continuam valendo. Você confirma.")
+        return
+
+    if atual.get("err") or not atual.get("res"):
+        st.warning(atual.get("err") or "A IA não retornou resultado.")
+        if st.button("Tentar de novo", key=f"ia_retry_{dig}"):
+            st.session_state.pop(f"_ia_{dig}", None)
+            st.rerun()
+        return
+
+    r = atual["res"]
+    with st.container(border=True):
+        fin = r.get("finalidade_esportiva") or {}
+        man = r.get("mandato") or {}
+        reg = r.get("registro_cartorio") or {}
+        st.caption(f"IA: {r.get('_provedor', '')} · {r.get('_modelo', '')}")
+        if r.get("resumo"):
+            st.markdown(r["resumo"])
+        st.markdown(f"- **Finalidade esportiva:** {_simnao(fin.get('tem'))}"
+                    + (f" · {fin.get('artigo')}" if fin.get("artigo") else ""))
+        if fin.get("trecho"):
+            st.caption(f"› “{fin['trecho']}”")
+        periodo = " a ".join(x for x in [man.get("inicio"), man.get("fim")] if x)
+        st.markdown(f"- **Mandato vigente:** {_simnao(man.get('vigente'))}"
+                    + (f" · {periodo}" if periodo else ""))
+        st.markdown(f"- **Registro em cartório:** estatuto {_simnao(reg.get('estatuto'))} · "
+                    f"ata {_simnao(reg.get('ata'))}")
+        pts = r.get("pontos_atencao") or []
+        if pts:
+            st.markdown("**Pontos de atenção (IA):**")
+            for pt in pts[:6]:
+                st.markdown(f"- {pt}")
+        st.caption("Leitura de apoio — confirme com os documentos e o checklist. Pode errar.")
+    if st.button("Reler com IA", key=f"ia_reler_{dig}"):
+        st.session_state.pop(f"_ia_{dig}", None)
+        st.rerun()
 
 
 def _item_conferencia(chave, cri, dig, nomes_doc):
-    """Abaixo de cada item do checklist: o que o sistema encontrou (status,
-    resumo e trecho) e o botão que abre o documento na página exata."""
+    """Abaixo de cada item do checklist: um status curto do que o sistema
+    encontrou e o botão que abre o documento na página exata (onde está o
+    trecho). Sem texto longo — a tela fica enxuta."""
     if not cri:
         st.caption("Sem documento/leitura para este item — confira manualmente.")
         return
     badge = _BADGE.get(cri.get("cor"), "")
-    detalhe = cri.get("detalhe", "")
+    detalhe = (cri.get("detalhe") or "").strip()
+    if len(detalhe) > 110:
+        detalhe = detalhe[:110].rstrip() + "…"
     st.caption(f"{badge} · {detalhe}" if detalhe else (badge or ""))
-    ev = cri.get("evidencia")
-    if ev:
-        st.caption(f"› trecho: “{ev}”")
     arq, pag = cri.get("arquivo"), cri.get("pagina")
     if arq and arq in nomes_doc and pag:
         if st.button(f"Conferir no documento (pág. {pag})", key=f"ir_{chave}_{dig}",
@@ -431,6 +442,7 @@ def _analisar(f, dig):
                 _visualizar_pdfs(arquivos, dig, aberto=True)
             with cR:
                 _mostrar_parecer(p, dig)
+                _leitura_ia(arquivos, dig, r["Entidade"])
         else:
             _visualizar_pdfs(arquivos, dig, aberto=False)
         crit = conferencia.criterios(p) if p else {}

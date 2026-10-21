@@ -10,3 +10,4 @@ requests>=2.31
 plotly>=5.20
 wordcloud>=1.9
 matplotlib>=3.7
+anthropic>=0.69
