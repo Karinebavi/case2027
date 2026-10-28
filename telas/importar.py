@@ -56,7 +56,7 @@ def _historico():
         try:
             linhas = nuvem.historico(300)
         except Exception as erro:
-            st.warning(f"Não consegui ler o histórico agora ({erro}).")
+            st.warning(f"Não consegui ler o histórico agora ({type(erro).__name__}).")
             return
         if not linhas:
             st.caption("Nenhuma alteração registrada ainda.")
@@ -77,7 +77,8 @@ def _processar_upload(arquivo):
         st.error(str(aviso))
         return
     except Exception as erro:
-        st.error(f"Não consegui ler esse arquivo. Detalhe técnico: {erro}")
+        # LGPD: o erro de leitura pode citar o conteúdo da linha (nome, CNPJ, e-mail).
+        st.error(f"Não consegui ler esse arquivo ({type(erro).__name__}). Confira se é o CSV exportado do Wix.")
         return
     _processar_df(novo, origem=getattr(arquivo, "name", ""), sufixo="csv")
 
@@ -168,7 +169,7 @@ def _sincronizar_wix():
         forms = _wix_formularios()
     except Exception as erro:
         forms = []
-        st.caption(f"Não consegui listar os formulários agora ({erro}).")
+        st.caption(f"Não consegui listar os formulários agora ({type(erro).__name__}).")
     if forms:
         nomes = {nome: fid for fid, nome in forms}
         escolha = st.selectbox(
