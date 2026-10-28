@@ -7,7 +7,6 @@ uma o mentor sobe os três documentos (Cartão CNPJ, Estatuto e Ata) e confere,
 item a item, as regras do edital. Aprovando, segue para a entrevista; excluindo,
 informa o motivo e a próxima do ranking entra automaticamente (repescagem).
 """
-import base64
 import html
 import json
 import os
@@ -58,6 +57,29 @@ _TODAS = [(k, rot) for grupo in CRITERIOS.values() for (k, rot) in grupo]
 _LABEL = {k: rot for k, rot in _TODAS}
 
 
+_GRUPO_CURTO = {"cartao_cnpj": "cartão", "estatuto": "estatuto", "ata": "ata"}
+
+
+@st.cache_data(ttl=300, show_spinner="Conferindo quem enviou documentos no Wix…")
+def _docs_no_wix(nomes_tuple):
+    """{nome: {tem, grupos, score}} de quem tem documentos no Wix (1 leitura, cache)."""
+    try:
+        return wix.mapa_documentos(list(nomes_tuple))
+    except Exception:
+        return {}
+
+
+def _rotulo_docs(dw):
+    """Texto curto da situação dos documentos no Wix, para a tabela."""
+    if dw is None:
+        return "—"
+    if not dw["tem"]:
+        return "Não enviou"
+    if set(dw["grupos"]) >= {"cartao_cnpj", "estatuto", "ata"}:
+        return "Completo"
+    return "Parcial (" + ", ".join(_GRUPO_CURTO[g] for g in dw["grupos"]) + ")"
+
+
 def mostrar():
     st.title("3 · Documental (Fase 2)")
     _ui.cabecalho(3, "Suba os documentos de cada organização; o sistema lê e monta o parecer. "
@@ -88,13 +110,28 @@ def mostrar():
 
     st.subheader("Analisar organização")
     pool = funil.pool_documental(f)
+    docs_wix = {}
     if len(pool) == 0:
         st.info("Nenhuma organização no pool. Confira o ranking na aba Resultado.")
     else:
+        # Cruza o formulário de documentos do Wix com o pool: quem (ainda) não
+        # enviou documentos — para não ir atrás de uma bem colocada em vão.
+        docs_wix = _docs_no_wix(tuple(pool["Entidade"].tolist())) if wix.ativo() else {}
+        if docs_wix:
+            sem = [n for n in pool["Entidade"] if not docs_wix.get(n, {}).get("tem")]
+            if sem:
+                st.warning(f"**{len(sem)} de {len(pool)}** do pool estão **sem documentos** no Wix "
+                           "(sem correspondência por nome) — inclusive bem colocadas. "
+                           "Vale contatar antes de analisar, para não procurar em vão.")
+            else:
+                st.success("Todas as organizações do pool já têm documentos no Wix.")
+
         rotulos = {}
         for r in pool.itertuples():
             marca = " · interesse" if r.interesse else ""
-            rotulos[f"{int(r.pos_pool):>2}. {r.Entidade}  ·  nota {int(r.Nota)}  ·  [{r.doc_status}]{marca}"] = r.dig
+            dw = docs_wix.get(r.Entidade)
+            selo = "" if dw is None else (" · SEM documentos" if not dw["tem"] else " · com documentos")
+            rotulos[f"{int(r.pos_pool):>2}. {r.Entidade}  ·  nota {int(r.Nota)}  ·  [{r.doc_status}]{marca}{selo}"] = r.dig
         escolha = st.selectbox("Escolha a organização", list(rotulos.keys()))
         _analisar(f, rotulos[escolha])
 
@@ -104,12 +141,16 @@ def mostrar():
     vis["Interesse"] = vis["interesse"].map(lambda x: "Sim" if x else "")
     vis["Conferência"] = [_progresso(f, d) for d in vis["dig"]]
     vis["Etapa"] = vis["doc_status"].map({"pendente": "Documental (pendente)", "aprovada": "Aprovada → entrevista"})
+    colunas = ["pos_pool", "Entidade", "Cidade", "UF", "Nota", "Interesse", "Conferência", "Etapa"]
+    cfg = {"Nota": st.column_config.NumberColumn("Nota"),
+           "Pool": st.column_config.NumberColumn("Pool", width="small")}
+    if docs_wix:
+        vis["Documentos"] = vis["Entidade"].map(lambda n: _rotulo_docs(docs_wix.get(n)))
+        colunas.insert(5, "Documentos")
+        cfg["Documentos"] = st.column_config.TextColumn("Documentos", help="Correspondência no formulário de documentos do Wix (por nome).")
     st.dataframe(
-        vis[["pos_pool", "Entidade", "Cidade", "UF", "Nota", "Interesse", "Conferência", "Etapa"]].rename(
-            columns={"pos_pool": "Pool"}),
-        width="stretch", hide_index=True,
-        column_config={"Nota": st.column_config.NumberColumn("Nota"),
-                       "Pool": st.column_config.NumberColumn("Pool", width="small")},
+        vis[colunas].rename(columns={"pos_pool": "Pool"}),
+        width="stretch", hide_index=True, column_config=cfg,
     )
 
     _banco_descartadas(f)

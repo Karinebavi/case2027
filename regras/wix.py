@@ -189,13 +189,15 @@ def _buscar_submissoes(c, form_id):
     return linhas
 
 
-def sincronizar():
+def sincronizar(form_id=None):
     """Puxa as inscrições do Wix e devolve (DataFrame, info_str).
-    DataFrame: uma linha por inscrição, colunas = rótulos das perguntas."""
+    DataFrame: uma linha por inscrição, colunas = rótulos das perguntas.
+    form_id: se informado, puxa DESSE formulário (ex.: o de 2026 para teste);
+    senão usa o configurado no Secrets."""
     if not ativo():
         raise RuntimeError("Wix desligado — configure a seção [wix] no Secrets (api_key e site_id).")
     c = _cfg()
-    form_id = _resolver_form_id(c)
+    form_id = form_id or _resolver_form_id(c)
     mapa, nome_form = _mapa_target_rotulo(c, form_id)
     subs = _buscar_submissoes(c, form_id)
     linhas = []
@@ -335,6 +337,32 @@ def _norm(s):
     s = unicodedata.normalize("NFD", str(s))
     s = "".join(c for c in s if unicodedata.category(c) != "Mn").lower()
     return re.sub(r"[^a-z0-9 ]", " ", s).strip()
+
+
+def mapa_documentos(nomes, form_docs_id=None, minimo=0.6):
+    """Para uma lista de nomes de entidades, diz quem já tem documentos no Wix —
+    numa ÚNICA leitura do formulário de documentos (sem baixar os arquivos).
+    Cruza por NOME (os formulários não compartilham CNPJ), então é um indício:
+    'sem correspondência' quer dizer provavelmente não enviou — o mentor confirma.
+    Devolve {nome: {"tem": bool, "grupos": [..], "score": float}}."""
+    import difflib
+    envios, _ = buscar_documentos(form_docs_id=form_docs_id, baixar=False)
+    pre = [(_norm(e["entidade"]), {g for g, lst in e["arquivos"].items() if lst}) for e in envios]
+    out = {}
+    for nome in nomes:
+        alvo = _norm(nome)
+        melhor_grupos, score = set(), 0.0
+        for ne, grupos in pre:
+            if not (alvo and ne):
+                continue
+            r = difflib.SequenceMatcher(None, alvo, ne).ratio()
+            if alvo in ne or ne in alvo:
+                r = max(r, 0.9)
+            if r > score:
+                melhor_grupos, score = grupos, r
+        tem = score >= minimo and bool(melhor_grupos)
+        out[nome] = {"tem": tem, "grupos": sorted(melhor_grupos) if tem else [], "score": round(score, 2)}
+    return out
 
 
 def documentos_da_entidade(nome, form_docs_id=None, minimo=0.6):

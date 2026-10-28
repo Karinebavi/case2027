@@ -13,7 +13,7 @@ from telas import _calculo, _ui
 from regras import validacao, exportacao
 import tema
 
-SITUACOES = ["Classificada", "Fila de espera", "Fora do perfil", "Inelegível"]
+SITUACOES = ["Classificada", "Fila de espera"]
 
 # Cor da situação derivada da fonte única (tema.SEMAFORO).
 CORES_SITUACAO = {k: f"background-color:{bg};color:{fg}" for k, (bg, fg) in tema.SEMAFORO.items()}
@@ -40,9 +40,11 @@ def mostrar():
     # Resumo
     total = len(f)
     no_pool = int(f["em_pool"].sum())
+    com_atencao = int(f["Motivo"].fillna("").str.strip().ne("").sum())
     c = st.columns(4)
     c[0].metric("Inscrições", total)
-    c[1].metric("Aptas (passaram nas eliminatórias)", int(f["Status"].eq("Em classificação").sum()))
+    c[1].metric("Com atenção (pendência)", com_atencao,
+                help="Entram no ranking normalmente — o selo só avisa o mentor. Ninguém é excluído na Fase 1.")
     c[2].metric(f"Vão à Fase 2 (as {pool_size} melhores)", no_pool)
     c[3].metric("Vagas finais", vagas)
 
@@ -65,13 +67,13 @@ def mostrar():
     st.subheader("Ranking")
     st.caption(
         f"Ordenadas por nota. As **{pool_size}** melhores (coluna **Fase 2 = Sim**, em azul) vão à documental; "
-        "as demais ficam na fila. A cor da situação mostra o porquê de quem não segue."
+        "as demais ficam na fila. A coluna **Atenção** sinaliza pendências — ninguém é excluído aqui."
     )
 
     busca = st.text_input("Buscar entidade", placeholder="digite parte do nome...")
-    ver = st.radio("Ver", ["Todas", f"Só as {pool_size} da Fase 2", "Só as inelegíveis / fora do perfil"],
+    ver = st.radio("Ver", ["Todas", f"Só as {pool_size} da Fase 2", "Só as com atenção"],
                    horizontal=True, label_visibility="collapsed")
-    por_bloco = st.toggle("Ver pontos por bloco (como a nota foi formada)", value=False, key="ver_blocos")
+    por_bloco = st.toggle("Ver pontos por bloco (como a nota foi formada)", value=True, key="ver_blocos")
     with st.expander("Mais filtros (situação, região, cidade)"):
         fcol2, fcol3, fcol4 = st.columns(3)
         situacoes = fcol2.multiselect("Situação", SITUACOES, placeholder="Todas")
@@ -89,8 +91,8 @@ def mostrar():
         vista = vista[vista["Cidade"].isin(cidades)]
     if ver.startswith("Só as") and "Fase 2" in ver:
         vista = vista[vista["em_pool"]]
-    elif ver.startswith("Só as inelegíveis"):
-        vista = vista[vista["Situação"].isin(["Inelegível", "Fora do perfil"])]
+    elif ver == "Só as com atenção":
+        vista = vista[vista["Motivo"].fillna("").str.strip().ne("")]
 
     st.caption(f"Mostrando {len(vista)} de {total} inscrições.")
 
@@ -102,7 +104,7 @@ def mostrar():
     colunas = (["Posição", "Entidade", "Cidade", "UF", "Nota"] + bloco_cols
                + ["Anos", "Fase 2", "Situação", "Motivo"])
     disp = disp[colunas].rename(columns={**BLOCO_COL, "Anos": "Tempo (anos)",
-                                         "Motivo": "Motivo (se não segue)"})
+                                         "Motivo": "Atenção"})
 
     def _cor_sit(v):
         return CORES_SITUACAO.get(v, "")
@@ -120,7 +122,8 @@ def mostrar():
         "Posição": st.column_config.NumberColumn("Posição", width="small"),
         "Nota": st.column_config.ProgressColumn("Nota", min_value=0, max_value=70, format="%d"),
         "Fase 2": st.column_config.TextColumn("Fase 2", width="small"),
-        "Motivo (se não segue)": st.column_config.TextColumn("Motivo (se não segue)", width="large"),
+        "Atenção": st.column_config.TextColumn("Atenção", width="large",
+                                               help="Pendência sinalizada (não exclui). Confirmada na Fase 2."),
     }
     for rot in BLOCO_COL.values():
         if rot in disp.columns:

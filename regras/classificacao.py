@@ -3,11 +3,12 @@
 Classificação — ranking único nacional por nota (sem cota por região).
 Desempate: organização mais antiga (data de fundação anterior).
 
-Devolve, para cada inscrição, a 'Posição' no ranking e a 'Situação' final:
+Fase 1 não exclui ninguém: TODAS entram no ranking. Devolve, para cada
+inscrição, a 'Posição' e a 'Situação':
   Classificada    -> dentro do número de vagas
-  Fila de espera  -> passou nas regras, mas ficou acima da linha de corte
-  Fora do perfil  -> caiu no corte de teto
-  Inelegível      -> falhou uma eliminatória ou tem menos de 1 ano
+  Fila de espera  -> abaixo da linha de corte (das vagas)
+Pendências (sem computador/internet/disponibilidade, menos de 1 ano) ficam só
+como OBSERVAÇÃO na coluna 'Motivo'; o filtro real é a documental (Fase 2).
 """
 from datetime import date
 

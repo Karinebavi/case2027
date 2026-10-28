@@ -86,12 +86,16 @@ def _processar_df(novo, origem, sufixo):
     colunas = list(novo.columns)
     auto = mapeamento.auto_map(colunas)
 
-    # Correção só das obrigatórias que o sistema não reconheceu
+    # Essenciais para a base: sem nome e CNPJ não dá para pontuar nem deduplicar.
+    # As demais perguntas obrigatórias, se não vierem no formulário (ex.: uma
+    # pergunta que só existe este ano), NÃO bloqueiam — elas pontuam 0.
+    ESSENCIAIS = {"nome_entidade", "cnpj"}
     obrig = [(ch, rot) for (_g, ch, rot, ob, _d) in campos_def.CAMPOS if ob]
     faltando = [(ch, rot) for ch, rot in obrig if not auto.get(ch)]
     manual = {}
     if faltando:
-        st.warning("Algumas colunas obrigatórias não foram reconhecidas. Indique a coluna certa:")
+        st.caption("Perguntas que o sistema não reconheceu neste formulário. Se existirem com "
+                   "outro nome, aponte a coluna; as que não existirem pontuam 0.")
         opcoes = ["— não encontrada —"] + colunas
         for ch, rot in faltando:
             escolha = st.selectbox(rot, opcoes, key=f"map_{ch}_{sufixo}")
@@ -100,12 +104,19 @@ def _processar_df(novo, origem, sufixo):
 
     mapa = dict(auto)
     mapa.update(manual)
-    ainda_falta = [rot for ch, rot in obrig if not mapa.get(ch)]
+    falta_ess = [rot for ch, rot in obrig if ch in ESSENCIAIS and not mapa.get(ch)]
+    falta_pont = [rot for ch, rot in obrig if ch not in ESSENCIAIS and not mapa.get(ch)]
 
-    st.write(f"**{len(novo)}** inscrições. "
-             + ("Tudo reconhecido." if not ainda_falta else f"Faltam: {', '.join(ainda_falta)}."))
+    if falta_ess:
+        st.warning(f"**{len(novo)}** inscrições. Faltam campos essenciais ({', '.join(falta_ess)}) — "
+                   "aponte a coluna certa acima para continuar.")
+    elif falta_pont:
+        st.info(f"**{len(novo)}** inscrições. As perguntas não encontradas "
+                f"({', '.join(falta_pont)}) vão pontuar 0 — o resto é somado normalmente.")
+    else:
+        st.write(f"**{len(novo)}** inscrições. Tudo reconhecido.")
 
-    if st.button("Somar à base", type="primary", disabled=bool(ainda_falta), key=f"somar_{sufixo}"):
+    if st.button("Somar à base", type="primary", disabled=bool(falta_ess), key=f"somar_{sufixo}"):
         novos_norm = normalizacao.normalizar(novo, mapa)
         base = base_dados.carregar()
         final, cnpjs_novos, n_atualizados = base_dados.acumular(base, novos_norm)
@@ -126,6 +137,13 @@ def _processar_df(novo, origem, sufixo):
         st.rerun()
 
 
+@st.cache_data(ttl=600, show_spinner=False)
+def _wix_formularios():
+    """Lista (id, nome) dos formulários, com os de inscrição no topo."""
+    forms = wix.listar_formularios()
+    return sorted(forms, key=lambda f: (0 if "inscri" in (f[1] or "").lower() else 1, f[1] or ""))
+
+
 def _sincronizar_wix():
     """Botão opcional: puxa as inscrições direto do Wix e soma à base."""
     if not wix.ativo():
@@ -135,10 +153,25 @@ def _sincronizar_wix():
     st.markdown("**Sincronizar com o Wix**")
     st.caption("Puxa as inscrições direto do formulário. Os documentos NÃO vêm por aqui — "
                "no formulário eles são enviados por um link à parte.")
+
+    form_id_sel = None
+    try:
+        forms = _wix_formularios()
+    except Exception as erro:
+        forms = []
+        st.caption(f"Não consegui listar os formulários agora ({erro}).")
+    if forms:
+        nomes = {nome: fid for fid, nome in forms}
+        escolha = st.selectbox(
+            "De qual formulário puxar?", list(nomes.keys()), key="wix_form_sel",
+            help="Para o teste com o ano passado, escolha o formulário de inscrição de 2026. "
+                 "As perguntas que só existem este ano pontuam 0 automaticamente.")
+        form_id_sel = nomes.get(escolha)
+
     if st.button("Buscar inscrições do Wix", key="wix_buscar", icon=":material/sync:"):
         with st.spinner("Buscando as inscrições no Wix…"):
             try:
-                df, info = wix.sincronizar()
+                df, info = wix.sincronizar(form_id=form_id_sel)
                 st.session_state["_wix_df"] = df
                 st.session_state["_wix_info"] = info
                 st.session_state.pop("_wix_erro", None)
