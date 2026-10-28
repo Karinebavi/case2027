@@ -95,7 +95,7 @@ def _envios_wix():
         envios, _ = wix.buscar_documentos(baixar=False)
         return envios, ""
     except Exception as erro:
-        print(f"[documental] Wix: {erro}")
+        print(f"[documental] Wix indisponível ({type(erro).__name__})")
         return [], "Não consegui ler o formulário de documentos do Wix agora."
 
 
@@ -269,7 +269,7 @@ def _lote(linhas, estado):
             _guardar(proc.registro(estado, l["dig"]), p, arquivos, "wix", l["como"], _versao(l["envio"]))
             _calculo.salvar_estado()  # a cada entidade: fechar a tela não perde o que já foi feito
         except Exception as erro:
-            print(f"[documental] lote: falhou {l['dig']}: {erro}")
+            print(f"[documental] lote: falhou a entidade {i + 1} de {n} ({type(erro).__name__})")
             falhas.append(l["nome"])
     barra.empty()
     msg = f"{n - len(falhas)} de {n} analisadas."
@@ -505,7 +505,7 @@ def _analisar_e_guardar(dig, r, reg, arquivos, origem, como, versao):
                                  progresso=lambda t, x: barra.progress(min(max(x, 0.0), 1.0), text=t))
     except Exception as erro:
         barra.empty()
-        print(f"[documental] análise falhou {dig}: {erro}")
+        print(f"[documental] análise falhou ({type(erro).__name__})")
         st.error("Não consegui ler esses documentos. Pode ser um arquivo protegido por senha, "
                  "corrompido ou uma digitalização muito ruim — confira à mão.")
         return

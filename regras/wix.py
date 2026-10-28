@@ -473,5 +473,5 @@ def baixar_envio(envio):
             try:
                 arq[g].append((nomearq, _baixar(url)))
             except Exception as erro:
-                print(f"[wix] não baixei um arquivo de {g}: {erro}")
+                print(f"[wix] não baixei um arquivo de {g} ({type(erro).__name__})")
     return arq
