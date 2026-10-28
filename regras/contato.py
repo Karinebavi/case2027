@@ -67,6 +67,19 @@ def modelo_selecionada(nome):
     )
 
 
+def modelo_pedir_documentos(nome, pendencias):
+    """Pede à entidade o documento que faltou ou veio incompleto (Fase 2)."""
+    itens = "\n".join(f"- {p}" for p in pendencias) or "- Cartão CNPJ, Estatuto social e Ata da diretoria"
+    return (
+        f"Olá, equipe da {nome}!\n\n"
+        "A sua organização está na etapa de conferência de documentos do CASE 2027. "
+        "Para seguirmos, precisamos que nos envie:\n\n"
+        f"{itens}\n\n"
+        "Pedimos o documento completo (todas as páginas), em PDF ou em fotos legíveis.\n\n"
+        f"{ASSINATURA}"
+    )
+
+
 def modelo_nao_selecionada(nome):
     return (
         f"Olá, equipe da {nome}!\n\n"

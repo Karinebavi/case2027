@@ -26,7 +26,7 @@ def classificar(scored, vagas):
     ordem = sorted(em_classificacao, key=chave)
 
     df["Posição"] = None
-    df["Situação"] = df["Status"]  # começa com Inelegível / Fora do perfil
+    df["Situação"] = df["Status"]  # todas "Em classificação" na Fase 1; vira Classificada/Fila abaixo
     for posicao, i in enumerate(ordem, start=1):
         df.loc[i, "Posição"] = posicao
         df.loc[i, "Situação"] = "Classificada" if posicao <= vagas else "Fila de espera"

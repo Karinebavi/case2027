@@ -58,8 +58,14 @@ Inscrições (Wix)
     com o **trecho**. Está registrado em cartório?
   - **Ata:** a diretoria está **vigente**? Registrada em cartório?
 - As que não passam na documental ficam **bem sinalizadas** (quem e **por quê**).
-- **Cuidado com o tempo:** analisar as 30 × 3 documentos de uma vez pode demorar.
-  O fluxo é **sob demanda / uma de cada vez**, não tudo de uma vez por padrão.
+- **Como a tela funciona:** um **quadro** com as 30 e um quadradinho colorido por
+  documento; um botão **analisa sozinho, uma por uma**, as que têm documentos no Wix
+  (o resultado fica salvo — não precisa refazer); ao clicar numa linha, **três
+  cartões** (Cartão, Estatuto, Ata) e as ações: aprovar, pedir documento, excluir.
+- **Ligação com o Wix:** a entidade preenche a inscrição e, no fim, segue um link
+  para o **formulário de documentos**. Esse formulário **precisa pedir o CNPJ** —
+  é por ele que o sistema liga os documentos à inscrição certa (depois tenta o
+  e-mail do responsável e, por último, o nome completo).
 
 ### FASE 3 — Relatório para o patrocinador  ·  *tela 4 (Análises)*
 

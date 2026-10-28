@@ -71,7 +71,7 @@ def salvar_estado():
         campos = {k: depois.get(k) for k in _RESUMO if antes.get(k) != depois.get(k)}
         if antes.get("doc_check") != depois.get("doc_check"):
             campos["doc_check"] = depois.get("doc_check")
-        for k in ("doc_obs", "entrevista_parecer", "entrevista_relato"):
+        for k in ("doc_obs", "doc_auto", "entrevista_parecer", "entrevista_relato"):
             if antes.get(k) != depois.get(k):
                 campos[k] = "(alterado)"
         nuvem.registrar("processo", {"cnpj": d, "mudancas": campos})

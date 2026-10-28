@@ -35,6 +35,11 @@ SEMAFORO_FORTE = {
     "Classificada": "#2E7D32", "Fila de espera": "#C99A2E",
     "Fora do perfil": "#9E9E9E", "Inelegível": "#B84A4A",
 }
+# "Quadradinhos" de status (fundo, texto) da Documental — mesma paleta do semáforo.
+COR_STATUS = {
+    "verde": SEMAFORO["Classificada"], "amarelo": SEMAFORO["Fila de espera"],
+    "vermelho": SEMAFORO["Inelegível"], "cinza": SEMAFORO["Fora do perfil"],
+}
 
 
 def aplicar():

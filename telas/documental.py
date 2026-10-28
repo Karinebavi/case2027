@@ -2,26 +2,36 @@
 """
 Tela 3 — Documental (Fase 2)
 ============================
-O pool das melhores (por padrão 30) passa pela análise documental. Para cada
-uma o mentor sobe os três documentos (Cartão CNPJ, Estatuto e Ata) e confere,
-item a item, as regras do edital. Aprovando, segue para a entrevista; excluindo,
-informa o motivo e a próxima do ranking entra automaticamente (repescagem).
+O pool das melhores (por padrão 30) passa pela conferência de documentos.
+
+  1. Quadro do pool — todas de uma vez, com um quadradinho por documento
+     (Cartão CNPJ, Estatuto, Ata): tudo à vista, sem abrir uma por uma.
+  2. Análise em lote — o sistema busca os documentos no Wix (pelo CNPJ, depois
+     e-mail, depois nome) e analisa uma por uma sozinho. O resultado fica SALVO
+     no processo: não precisa refazer ao voltar à tela.
+  3. Detalhe — ao clicar numa linha, três cartões com o porquê de cada item e
+     as ações: aprovar, pedir o documento que falta, excluir com motivo.
+
+Aprovando, segue para a entrevista; excluindo, a próxima do ranking entra.
 """
-import html
+import datetime as dt
 import json
 import os
+import re
 
+import pandas as pd
 import streamlit as st
 
+import tema
 from telas import _calculo, _ui
-from regras import funil
+from regras import contato, funil, wix
 from regras import processo as proc
-from regras import wix
-from leitura import conferencia
-from leitura import ia
+from regras.memoria import so_digitos
+from leitura import conferencia, ia, resumo
 from leitura import parecer as parecer_mod
+from leitura import texto as texto_mod
 
-# Documentos de exemplo para o "modo de teste" (experimentar a análise sem docs reais).
+# Documentos de exemplo para testar a análise sem documentos reais.
 _EXEMPLOS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                              "dados_exemplo", "documentos")
 _EXEMPLOS = {"cartao_cnpj": "cartao_cnpj_EXEMPLO.pdf",
@@ -32,58 +42,141 @@ def _carregar_exemplos():
     out = {}
     for g, nome in _EXEMPLOS.items():
         caminho = os.path.join(_EXEMPLOS_DIR, nome)
-        out[g] = [(nome, open(caminho, "rb").read())] if os.path.exists(caminho) else []
+        if os.path.exists(caminho):
+            with open(caminho, "rb") as fh:
+                out[g] = [(nome, fh.read())]
+        else:
+            out[g] = []
     return out
 
-# Status em palavra (não só cor — acessibilidade), didático para o mentor.
-_BADGE = {"verde": "Conforme", "amarelo": "Confira", "vermelho": "Falta"}
 
-# Conferência documental — só o essencial que o mentor decide, por documento.
+# Itens da conferência (guardados em doc_check ao aprovar — outras telas leem).
 CRITERIOS = {
-    "Cartão CNPJ": [
-        ("cnpj_receita", "Emitido pela Receita Federal"),
-        ("cnpj_1ano", "Mais de 1 ano de funcionamento"),
-    ],
-    "Estatuto": [
-        ("est_finalidade", "Finalidade esportiva"),
-        ("est_cartorio", "Registrado em cartório"),
-    ],
-    "Ata": [
-        ("ata_vigencia", "Mandato da diretoria vigente"),
-        ("ata_cartorio", "Registrada em cartório"),
-    ],
+    "Cartão CNPJ": [("cnpj_receita", "Emitido pela Receita Federal"),
+                    ("cnpj_1ano", "Mais de 1 ano de funcionamento")],
+    "Estatuto": [("est_finalidade", "Finalidade esportiva"),
+                 ("est_cartorio", "Registrado em cartório")],
+    "Ata": [("ata_vigencia", "Mandato da diretoria vigente"),
+            ("ata_cartorio", "Registrada em cartório")],
 }
 _TODAS = [(k, rot) for grupo in CRITERIOS.values() for (k, rot) in grupo]
-_LABEL = {k: rot for k, rot in _TODAS}
+
+_DOCS = [("cartao", "Cartão CNPJ", ":material/badge:"),
+         ("estatuto", "Estatuto", ":material/menu_book:"),
+         ("ata", "Ata da diretoria", ":material/groups:")]
+# Selo em palavra (não só cor — acessibilidade) e a cor do badge do Streamlit.
+_SELO = {"verde": ("Sim", "green"), "amarelo": ("Conferir", "orange"),
+         "vermelho": ("Não", "red"), "cinza": ("Falta", "gray")}
+_SITUACAO_COR = {"Aprovada": "verde", "Pronta para aprovar": "verde", "Conferir": "amarelo",
+                 "Não atende": "vermelho", "Não analisada": "cinza", "Sem documentos": "vermelho"}
+_SITUACAO_POR_RESULTADO = {"APTO": "Pronta para aprovar", "APTO_COM_AJUSTES": "Conferir",
+                           "NAO_APTO": "Não atende"}
 
 
-_GRUPO_CURTO = {"cartao_cnpj": "cartão", "estatuto": "estatuto", "ata": "ata"}
+def _md(texto):
+    """Texto vindo de formulário/documento, seguro para st.markdown: não vira
+    link, negrito, HTML nem badge (escapa a pontuação de marcação)."""
+    return re.sub(r"([\\`*_{}\[\]()#+\-.!|<>~$:])", r"\\\1", str(texto or ""))
 
 
-@st.cache_data(ttl=300, show_spinner="Conferindo quem enviou documentos no Wix…")
-def _docs_no_wix(nomes_tuple):
-    """{nome: {tem, grupos, score}} de quem tem documentos no Wix (1 leitura, cache)."""
+def _salvar_e_recarregar(msg=None):
+    _calculo.salvar_estado()
+    if msg:
+        st.session_state["_doc_msg"] = msg
+    st.rerun()
+
+
+# ------------------------------------------------------------------ dados
+
+@st.cache_data(ttl=300, show_spinner="Lendo os envios de documentos no Wix…")
+def _envios_wix():
+    """Envios do formulário de documentos (só nomes e links, sem baixar)."""
     try:
-        return wix.mapa_documentos(list(nomes_tuple))
-    except Exception:
-        return {}
+        envios, _ = wix.buscar_documentos(baixar=False)
+        return envios, ""
+    except Exception as erro:
+        print(f"[documental] Wix: {erro}")
+        return [], "Não consegui ler o formulário de documentos do Wix agora."
 
 
-def _rotulo_docs(dw):
-    """Texto curto da situação dos documentos no Wix, para a tabela."""
-    if dw is None:
-        return "—"
-    if not dw["tem"]:
-        return "Não enviou"
-    if set(dw["grupos"]) >= {"cartao_cnpj", "estatuto", "ata"}:
-        return "Completo"
-    return "Parcial (" + ", ".join(_GRUPO_CURTO[g] for g in dw["grupos"]) + ")"
+def _contatos(dados):
+    """CNPJ (dígitos) -> e-mails da inscrição (responsável primeiro)."""
+    out = {}
+    for _, row in dados.iterrows():
+        d = so_digitos(row.get("cnpj", ""))
+        if d:
+            out[d] = [str(row.get(k, "") or "").strip() for k in ("email", "email_institucional")
+                      if "@" in str(row.get(k, "") or "")]
+    return out
 
+
+def _versao(envio):
+    return f"{envio.get('_id')}|{envio.get('_data')}"
+
+
+def _situacao(pool, estado, ligacoes, wix_ok):
+    """Uma linha por entidade do pool: envio no Wix, resumo salvo e o que falta."""
+    linhas = []
+    for r in pool.to_dict("records"):
+        dig = r["dig"]
+        reg = estado.get(dig, {})
+        auto = reg.get("doc_auto")
+        status = reg.get("doc_status", "pendente")
+        envio, como = ligacoes.get(dig, (None, None))
+
+        if not envio or status != "pendente":
+            precisa = False
+        elif not auto:
+            precisa = True
+        else:  # reanalisa só se o envio do Wix mudou (envio à mão não é sobrescrito)
+            precisa = auto.get("origem") == "wix" and auto.get("versao") != _versao(envio)
+
+        if envio:
+            n = len(wix.grupos_enviados(envio))
+            docs = (f"{n} de 3", "verde" if n == 3 else "amarelo")
+        elif auto and auto.get("origem") == "manual":
+            docs = ("enviados à mão", "verde")
+        elif wix_ok:
+            docs = ("não enviou", "vermelho")
+        else:
+            docs = ("—", "cinza")
+
+        if status == "aprovada":
+            situacao = "Aprovada"
+        elif auto:
+            situacao = _SITUACAO_POR_RESULTADO.get(auto.get("resultado"), "Conferir")
+        elif envio or not wix_ok:
+            situacao = "Não analisada"
+        else:
+            situacao = "Sem documentos"
+
+        def doc(chave, auto=auto):
+            d = (auto or {}).get(chave) or {}
+            return (d.get("curto", "—"), d.get("cor", "cinza")) if auto else ("—", "cinza")
+
+        linhas.append({"dig": dig, "nome": r["Entidade"], "pos": int(r["pos_pool"]), "nota": int(r["Nota"]),
+                       "envio": envio, "como": como, "auto": auto, "status": status, "precisa": precisa,
+                       "docs": docs, "cartao": doc("cartao"), "estatuto": doc("estatuto"), "ata": doc("ata"),
+                       "situacao": situacao})
+    return linhas
+
+
+def _guardar(reg, p, arquivos, origem, como, versao):
+    """Salva no processo o resumo compacto da análise (sem os arquivos)."""
+    r = resumo.compacto(p)
+    r.update(origem=origem, como=como or "", versao=versao,
+             data=dt.date.today().strftime("%d/%m/%Y"),
+             arquivos=[n for lst in arquivos.values() for n, _ in lst])
+    reg["doc_auto"] = r
+    reg["doc_parecer"] = conferencia.resumo_para_salvar(p)
+
+
+# ------------------------------------------------------------------ tela
 
 def mostrar():
     st.title("3 · Documental (Fase 2)")
-    _ui.cabecalho(3, "Suba os documentos de cada organização; o sistema lê e monta o parecer. "
-                     "Você confere e aprova ou exclui (com motivo) — a próxima entra automaticamente.")
+    _ui.cabecalho(3, "Veja de uma vez como estão os documentos das melhores colocadas. O sistema busca "
+                     "no Wix e analisa sozinho; você confere, aprova ou exclui com motivo.")
 
     dados = st.session_state.get("dados")
     if dados is None or not st.session_state.get("mapa_ok"):
@@ -94,135 +187,341 @@ def mostrar():
     vagas = int(st.session_state.get("vagas", 10))
     pool_size = int(st.session_state.get("pool_fase2", 30))
     f = _calculo.funil_df(dados, mapa, vagas, pool_size)
-
-    cont = funil.contagem(f)
-    aprovadas_doc = int((f["em_pool"] & (f["doc_status"] == "aprovada")).sum())
-    c = st.columns(4)
-    c[0].metric("No pool", cont["pool"])
-    c[1].metric("Pendentes", cont["doc_pendente"])
-    c[2].metric("Aprovadas", aprovadas_doc)
-    c[3].metric("Descartadas", cont["descartadas"])
-
-    st.caption(
-        f"Pool de {pool_size}. Ao excluir uma, a próxima do ranking entra automaticamente. "
-        "As aprovadas seguem para a aba 5 · Entrevistas."
-    )
-
-    st.subheader("Analisar organização")
     pool = funil.pool_documental(f)
-    docs_wix = {}
     if len(pool) == 0:
         st.info("Nenhuma organização no pool. Confira o ranking na aba Resultado.")
+        _banco_descartadas(f)
+        return
+
+    msg = st.session_state.pop("_doc_msg", None)
+    if msg:
+        st.success(msg)
+
+    estado = _calculo.estado()
+    wix_ok, envios = wix.ativo(), []
+    if wix_ok:
+        envios, erro = _envios_wix()
+        if erro:
+            st.warning(erro + " Tente de novo em instantes.")
+            wix_ok = False
+    contatos = _contatos(dados)
+    # Liga os envios de documentos considerando a base inteira (não só o pool):
+    # um envio vai para a entidade de nome mais parecido, esteja ela no pool ou não.
+    ligacoes = wix.ligar(envios, [{"chave": d, "cnpj": d, "emails": contatos.get(d, []), "nome": n}
+                                  for d, n in zip(f["dig"], f["Entidade"])]) if envios else {}
+    linhas = _situacao(pool, estado, ligacoes, wix_ok)
+
+    _metricas(linhas, f, wix_ok)
+    _lote(linhas, estado)
+
+    dig = _quadro(linhas)
+    if dig:
+        linha = next(l for l in linhas if l["dig"] == dig)
+        _detalhe(f, linha, estado, contatos)
     else:
-        # Cruza o formulário de documentos do Wix com o pool: quem (ainda) não
-        # enviou documentos — para não ir atrás de uma bem colocada em vão.
-        docs_wix = _docs_no_wix(tuple(pool["Entidade"].tolist())) if wix.ativo() else {}
-        if docs_wix:
-            sem = [n for n in pool["Entidade"] if not docs_wix.get(n, {}).get("tem")]
-            if sem:
-                st.warning(f"**{len(sem)} de {len(pool)}** do pool estão **sem documentos** no Wix "
-                           "(sem correspondência por nome) — inclusive bem colocadas. "
-                           "Vale contatar antes de analisar, para não procurar em vão.")
-            else:
-                st.success("Todas as organizações do pool já têm documentos no Wix.")
-
-        rotulos = {}
-        for r in pool.itertuples():
-            marca = " · interesse" if r.interesse else ""
-            dw = docs_wix.get(r.Entidade)
-            selo = "" if dw is None else (" · SEM documentos" if not dw["tem"] else " · com documentos")
-            rotulos[f"{int(r.pos_pool):>2}. {r.Entidade}  ·  nota {int(r.Nota)}  ·  [{r.doc_status}]{marca}{selo}"] = r.dig
-        escolha = st.selectbox("Escolha a organização", list(rotulos.keys()))
-        _analisar(f, rotulos[escolha])
-
-    st.divider()
-    st.subheader("Pool da Fase 2 (situação atual)")
-    vis = pool.copy()
-    vis["Interesse"] = vis["interesse"].map(lambda x: "Sim" if x else "")
-    vis["Conferência"] = [_progresso(f, d) for d in vis["dig"]]
-    vis["Etapa"] = vis["doc_status"].map({"pendente": "Documental (pendente)", "aprovada": "Aprovada → entrevista"})
-    colunas = ["pos_pool", "Entidade", "Cidade", "UF", "Nota", "Interesse", "Conferência", "Etapa"]
-    cfg = {"Nota": st.column_config.NumberColumn("Nota"),
-           "Pool": st.column_config.NumberColumn("Pool", width="small")}
-    if docs_wix:
-        vis["Documentos"] = vis["Entidade"].map(lambda n: _rotulo_docs(docs_wix.get(n)))
-        colunas.insert(5, "Documentos")
-        cfg["Documentos"] = st.column_config.TextColumn("Documentos", help="Correspondência no formulário de documentos do Wix (por nome).")
-    st.dataframe(
-        vis[colunas].rename(columns={"pos_pool": "Pool"}),
-        width="stretch", hide_index=True, column_config=cfg,
-    )
+        st.caption("Clique numa linha do quadro para ver o detalhe e decidir.")
 
     _banco_descartadas(f)
 
 
-def _progresso(f, dig):
-    reg = _calculo.estado().get(dig, {})
-    check = reg.get("doc_check", {})
-    n = sum(1 for k, _ in _TODAS if check.get(k))
-    return f"{n}/{len(_TODAS)}"
+def _metricas(linhas, f, wix_ok):
+    com_docs = sum(1 for l in linhas if l["envio"] or (l["auto"] and l["auto"].get("origem") == "manual"))
+    c = st.columns(4)
+    c[0].metric("No pool", len(linhas))
+    c[1].metric("Com documentos", com_docs,
+                help="Documentos encontrados no Wix (pelo CNPJ, e-mail ou nome completo) ou enviados à mão.")
+    c[2].metric("Já analisadas", sum(1 for l in linhas if l["auto"]))
+    c[3].metric("Aprovadas / excluídas",
+                f"{sum(1 for l in linhas if l['status'] == 'aprovada')} / {int((f['doc_status'] == 'excluida').sum())}")
+    cols = st.columns([3, 1], vertical_alignment="center")
+    if wix_ok:
+        cols[0].caption("Documentos do Wix ligados à inscrição pelo CNPJ (ou e-mail do responsável). "
+                        "Excluindo uma, a próxima do ranking entra no pool.")
+        if cols[1].button("Atualizar do Wix", icon=":material/refresh:", width="stretch"):
+            _envios_wix.clear()
+            st.rerun()
+    else:
+        cols[0].caption("Wix desligado ou indisponível: suba os documentos à mão no detalhe de cada entidade.")
 
 
-_GRUPOS = [("cartao_cnpj", "Cartão CNPJ", False), ("estatuto", "Estatuto", True), ("ata", "Ata(s)", True)]
-_CHAVES_GRUPO = {"Cartão CNPJ": "cartao_cnpj", "Estatuto": "estatuto", "Ata": "ata"}
+def _lote(linhas, estado):
+    pend = [l for l in linhas if l["precisa"]]
+    if not pend:
+        return
+    cols = st.columns([1, 2], vertical_alignment="center")
+    rodar = cols[0].button(f"Analisar as {len(pend)} que faltam", type="primary",
+                           icon=":material/play_arrow:", width="stretch")
+    cols[1].caption("Busca os documentos no Wix e analisa uma por uma, sozinho (1 a 3 minutos cada). "
+                    "Deixe esta tela aberta; o que já foi analisado fica salvo mesmo se fechar.")
+    if not rodar:
+        return
+    barra = st.progress(0.0, text="Começando…")
+    n, falhas = len(pend), []
+    for i, l in enumerate(pend):
+        def _prog(txt, frac, i=i, nome=l["nome"]):
+            barra.progress(min((i + frac) / n, 1.0), text=f"{i + 1} de {n} · {nome}: {txt}")
+        try:
+            _prog("baixando os documentos do Wix…", 0.0)
+            arquivos = wix.baixar_envio(l["envio"])
+            if not any(arquivos.values()):
+                raise RuntimeError("nenhum arquivo baixado")
+            p = conferencia.analisar(arquivos, l["dig"], l["nome"], progresso=_prog)
+            _guardar(proc.registro(estado, l["dig"]), p, arquivos, "wix", l["como"], _versao(l["envio"]))
+            _calculo.salvar_estado()  # a cada entidade: fechar a tela não perde o que já foi feito
+        except Exception as erro:
+            print(f"[documental] lote: falhou {l['dig']}: {erro}")
+            falhas.append(l["nome"])
+    barra.empty()
+    msg = f"{n - len(falhas)} de {n} analisadas."
+    if falhas:
+        msg += " Não consegui ler: " + ", ".join(falhas) + " — abra o detalhe e confira à mão."
+    st.session_state["_doc_msg"] = msg
+    st.rerun()
 
 
-def _arquivos(dig, nome=None):
-    """Uploads da organização: {grupo: [(nome, bytes)]}. Aceita PDF e imagem
-    (foto) — muitas entidades enviam foto do documento."""
-    st.markdown("**1 · Documentos** — suba os arquivos (PDF ou foto); o sistema lê e monta o parecer.")
-    arquivos = {}
-    for (g, rot, multi), col in zip(_GRUPOS, st.columns(3)):
-        with col:
-            up = st.file_uploader(rot + (" — pode mais de um" if multi else ""),
-                                  type=["pdf", "jpg", "jpeg", "png", "webp"],
-                                  accept_multiple_files=multi, key=f"up_{g}_{dig}")
-        lst = up if multi else ([up] if up else [])
-        arquivos[g] = [(u.name, u.getvalue()) for u in (lst or [])]
+def _quadro(linhas):
+    """Quadro do pool com um quadradinho colorido por documento. Devolve o CNPJ
+    (dígitos) da linha escolhida, ou None."""
+    df = pd.DataFrame([{"Pool": l["pos"], "Entidade": l["nome"], "Nota": l["nota"],
+                        "Documentos": l["docs"][0], "Cartão": l["cartao"][0], "Estatuto": l["estatuto"][0],
+                        "Ata": l["ata"][0], "Situação": l["situacao"]} for l in linhas])
+    cores = pd.DataFrame([{"Documentos": l["docs"][1], "Cartão": l["cartao"][1], "Estatuto": l["estatuto"][1],
+                           "Ata": l["ata"][1], "Situação": _SITUACAO_COR.get(l["situacao"], "cinza")}
+                          for l in linhas])
 
-    # Fonte alternativa: documentos de exemplo OU puxados do Wix (mesma vaga).
-    teste = st.session_state.get(f"_teste_{dig}")
-    if not any(arquivos.values()) and teste:
-        arquivos = teste
-        fonte = st.session_state.get(f"_fonte_{dig}", "documentos de exemplo")
-        st.caption(f":material/science: Usando {fonte} (não enviados manualmente).")
-    b = st.columns(3)
-    if b[0].button("Testar com exemplos", icon=":material/science:", key=f"teste_{dig}"):
-        st.session_state[f"_teste_{dig}"] = _carregar_exemplos()
-        st.session_state[f"_fonte_{dig}"] = "documentos de exemplo"
-        st.session_state.get("_pareceres", {}).pop(dig, None)
-        st.rerun()
-    if wix.ativo() and nome and b[1].button("Buscar documentos no Wix", icon=":material/cloud_download:",
-                                            key=f"wixdoc_{dig}"):
-        with st.spinner("Buscando os documentos desta entidade no Wix…"):
-            try:
-                arq, score = wix.documentos_da_entidade(nome)
-            except Exception as e:
-                arq, score = None, 0.0
-                st.session_state[f"_wixdocerr_{dig}"] = str(e)
-        if arq and any(arq.values()):
-            st.session_state[f"_teste_{dig}"] = arq
-            st.session_state[f"_fonte_{dig}"] = f"documentos do Wix (semelhança de nome {int(score*100)}%)"
-            st.session_state.get("_pareceres", {}).pop(dig, None)
-        elif f"_wixdocerr_{dig}" not in st.session_state:
-            st.session_state[f"_wixdocerr_{dig}"] = ("Não encontrei os documentos desta entidade no Wix "
-                                                     "(sem correspondência de nome). Suba manualmente.")
-        st.rerun()
-    if teste and b[2].button("Limpar", icon=":material/close:", key=f"limpateste_{dig}"):
-        st.session_state.pop(f"_teste_{dig}", None)
-        st.session_state.pop(f"_fonte_{dig}", None)
-        st.session_state.get("_pareceres", {}).pop(dig, None)
-        st.rerun()
-    if st.session_state.get(f"_wixdocerr_{dig}"):
-        st.caption(":material/warning: " + st.session_state.pop(f"_wixdocerr_{dig}"))
-    st.caption("Os arquivos ficam só nesta sessão (não são guardados). No banco fica apenas o resumo do parecer.")
-    return arquivos
+    def _pinta(col):
+        return [f"background-color:{tema.COR_STATUS[c][0]};color:{tema.COR_STATUS[c][1]}" for c in cores[col.name]]
 
+    st.subheader("Quadro do pool")
+    st.caption("Verde = conforme · amarelo = conferir · vermelho = não atende · cinza = sem documento ou "
+               "ainda não analisada. Cartão mostra o tempo de funcionamento; Estatuto, o artigo do esporte.")
+    versao = st.session_state.get("_quadro_v", 0)
+    ev = st.dataframe(
+        df.style.apply(_pinta, subset=list(cores.columns)),
+        hide_index=True, width="stretch", height=min(36 * (len(df) + 1) + 4, 1110),
+        on_select="rerun", selection_mode="single-row", key=f"quadro_doc_{versao}",
+        column_config={"Pool": st.column_config.NumberColumn("Pool", width="small"),
+                       "Nota": st.column_config.NumberColumn("Nota", width="small"),
+                       "Entidade": st.column_config.TextColumn("Entidade", width="large")},
+    )
+    rows = ev.selection.rows if ev else []
+    if rows:
+        st.session_state["_doc_sel"] = linhas[rows[0]]["dig"]
+    sel = st.session_state.get("_doc_sel")
+    return sel if any(l["dig"] == sel for l in linhas) else None
+
+
+# ------------------------------------------------------------------ detalhe
+
+def _detalhe(f, linha, estado, contatos):
+    dig = linha["dig"]
+    r = f[f["dig"] == dig].iloc[0]
+    reg = proc.registro(estado, dig)
+    auto = reg.get("doc_auto")
+
+    with st.container(border=True):
+        topo = st.columns([6, 1], vertical_alignment="center")
+        topo[0].markdown(f"### {_md(r['Entidade'])}")
+        if topo[1].button("Fechar", key=f"fechar_{dig}", width="stretch"):
+            st.session_state.pop("_doc_sel", None)
+            st.session_state["_quadro_v"] = st.session_state.get("_quadro_v", 0) + 1
+            st.rerun()
+        if linha["envio"]:
+            origem = f"no Wix (ligados pelo {linha['como']})"
+        elif auto and auto.get("origem") == "manual":
+            origem = f"enviados à mão em {auto.get('data', '—')}"
+        else:
+            origem = "não encontrados no Wix"
+        st.caption(f"Nota {int(r['Nota'])} · posição {int(r['Posição'])} · {_md(r['Cidade'])}/{r['UF']} · "
+                   f"documentos {origem}" + (f" · analisados em {auto.get('data')}" if auto else ""))
+
+        teste = st.session_state.get(f"_teste_{dig}")
+        if teste:
+            c = st.columns([4, 1], vertical_alignment="center")
+            c[0].warning("Teste com documentos de EXEMPLO (fictícios): não são desta entidade e nada foi salvo.")
+            if c[1].button("Sair do teste", key=f"sairteste_{dig}", width="stretch"):
+                for k in (f"_teste_{dig}", f"_arq_{dig}"):
+                    st.session_state.pop(k, None)
+                st.session_state.get("_pareceres", {}).pop(dig, None)
+                st.rerun()
+            _cartoes(teste, dig)
+        elif auto:
+            _cartoes(auto, dig)
+        elif linha["envio"]:
+            st.info("Documentos encontrados no Wix, ainda não analisados. Use **Analisar agora** abaixo "
+                    "(ou o botão de lote acima, para todas de uma vez).")
+        else:
+            st.info("Esta entidade ainda não enviou documentos pelo Wix. Peça os documentos ou, se "
+                    "chegaram por e-mail, suba à mão em **Enviar documentos à mão** abaixo.")
+
+        _acoes(r, reg, auto, contatos.get(dig, []), dig)
+        st.divider()
+        _documentos(dig, r, linha, reg)
+
+
+def _cartoes(auto, dig):
+    for col, (chave, titulo, icone) in zip(st.columns(3), _DOCS):
+        doc = auto.get(chave) or {}
+        with col, st.container(border=True):
+            st.markdown(f"**{icone} {titulo}**")
+            for cor, texto in doc.get("linhas", []):
+                rotulo, badge = _SELO.get(cor, ("Conferir", "orange"))
+                st.markdown(f":{badge}-badge[{rotulo}] {_md(texto)}")
+            if doc.get("trecho"):
+                st.caption("Trecho: “" + _md(doc["trecho"]) + "”")
+            if doc.get("pagina") and doc.get("arquivo"):
+                if st.button(f"Ver no documento (pág. {doc['pagina']})", key=f"pag_{chave}_{dig}",
+                             icon=":material/menu_book:", type="tertiary"):
+                    st.session_state[f"jump_{dig}"] = {"arquivo": doc["arquivo"], "pagina": int(doc["pagina"])}
+                    st.session_state[f"abrir_docs_{dig}"] = True
+                    st.rerun()
+
+
+def _acoes(r, reg, auto, emails, dig):
+    if reg.get("doc_status") == "aprovada":
+        c = st.columns([3, 1], vertical_alignment="center")
+        c[0].success("Aprovada na documental — segue para a entrevista.")
+        if c[1].button("Reabrir", key=f"reabrir_{dig}", width="stretch"):
+            reg["doc_status"] = "pendente"
+            _salvar_e_recarregar()
+        return
+
+    pontos = [(titulo, cor, t) for chave, titulo, _ in _DOCS
+              for cor, t in ((auto or {}).get(chave) or {}).get("linhas", []) if cor != "verde"]
+    b1, b2, b3 = st.columns(3)
+    with b1:
+        conferi = True
+        if auto and pontos:
+            conferi = st.checkbox("Conferi os pontos em amarelo/vermelho", key=f"conferi_{dig}")
+        if st.button("Aprovar", type="primary", icon=":material/check:", key=f"aprovar_{dig}", width="stretch"):
+            if not auto:
+                st.warning("Analise os documentos antes de aprovar.")
+            elif not conferi:
+                st.warning("Marque que conferiu os pontos em amarelo/vermelho.")
+            else:
+                reg["doc_status"] = "aprovada"
+                reg["doc_check"] = {k: True for k, _ in _TODAS}
+                _salvar_e_recarregar("Aprovada. Segue para a aba 5 · Entrevistas.")
+    with b2:
+        if emails:
+            corpo = contato.modelo_pedir_documentos(r["Entidade"], resumo.pendencias(auto) if auto else [])
+            st.link_button("Pedir documentos", contato.link_email(emails[0], "CASE 2027 — documentos", corpo),
+                           icon=":material/mail:", width="stretch")
+            st.caption("Abre o seu e-mail já escrito; você revisa e envia.")
+        else:
+            st.caption("Sem e-mail na inscrição para pedir os documentos.")
+    with b3:
+        graves = [f"{titulo}: {t}" for titulo, cor, t in pontos if cor == "vermelho"]
+        motivo = st.text_input("Motivo da exclusão", value="; ".join(graves[:2]), key=f"motivo_{dig}",
+                               placeholder="ex.: estatuto sem finalidade esportiva")
+        if st.button("Excluir", icon=":material/close:", key=f"excluir_{dig}", width="stretch"):
+            if not motivo.strip():
+                st.warning("Informe o motivo para excluir.")
+            else:
+                reg["doc_status"] = "excluida"
+                reg["doc_motivo"] = motivo.strip()
+                st.session_state.pop("_doc_sel", None)
+                _salvar_e_recarregar("Excluída. A próxima do ranking entrou automaticamente no pool.")
+
+
+def _documentos(dig, r, linha, reg):
+    """Documentos da entidade: buscar/analisar no Wix, enviar à mão, ver as
+    páginas, parecer completo e leitura por IA. Os arquivos ficam só na sessão."""
+    arquivos = st.session_state.get(f"_arq_{dig}")
+    precisa = linha["precisa"] or (linha["envio"] and not reg.get("doc_auto"))
+    c = st.columns(3)
+    if linha["envio"]:
+        rotulo = "Analisar agora" if precisa else "Analisar de novo"
+        if c[0].button(rotulo, type="primary" if precisa else "secondary", icon=":material/play_arrow:",
+                       key=f"analisar_{dig}", width="stretch"):
+            with st.spinner("Baixando os documentos do Wix…"):
+                arquivos = wix.baixar_envio(linha["envio"])
+            _analisar_e_guardar(dig, r, reg, arquivos, "wix", linha["como"], _versao(linha["envio"]))
+        if not arquivos and (c[1].button("Abrir os documentos", icon=":material/folder_open:",
+                                         key=f"abrir_{dig}", width="stretch")
+                             or st.session_state.pop(f"abrir_docs_{dig}", False)):
+            with st.spinner("Baixando os documentos do Wix…"):
+                st.session_state[f"_arq_{dig}"] = wix.baixar_envio(linha["envio"])
+            st.rerun()
+
+    with st.expander("Enviar documentos à mão (recebidos por e-mail, por exemplo)"):
+        manual = {}
+        for (g, rot, multi), col in zip([("cartao_cnpj", "Cartão CNPJ", False), ("estatuto", "Estatuto", True),
+                                         ("ata", "Ata(s)", True)], st.columns(3)):
+            with col:
+                up = st.file_uploader(rot, type=["pdf", "jpg", "jpeg", "png", "webp"],
+                                      accept_multiple_files=multi, key=f"up_{g}_{dig}")
+            lst = up if multi else ([up] if up else [])
+            manual[g] = [(u.name, u.getvalue()) for u in (lst or [])]
+        m = st.columns(2)
+        if any(manual.values()) and m[0].button("Analisar estes arquivos", type="primary",
+                                                icon=":material/play_arrow:", key=f"manual_{dig}"):
+            _analisar_e_guardar(dig, r, reg, manual, "manual", "", "manual")
+        if m[1].button("Testar com documentos de exemplo", icon=":material/science:", key=f"exemplo_{dig}"):
+            # Só mostra: um resultado fictício NUNCA vai para o registro da entidade.
+            exemplos = _carregar_exemplos()
+            with st.spinner("Lendo os documentos de exemplo…"):
+                p = conferencia.analisar(exemplos)
+            st.session_state[f"_teste_{dig}"] = resumo.compacto(p)
+            st.session_state[f"_arq_{dig}"] = exemplos
+            st.session_state.setdefault("_pareceres", {})[dig] = {
+                "assinatura": conferencia.assinatura(exemplos), "parecer": p}
+            st.rerun()
+        st.caption("Os arquivos ficam só nesta sessão (não são guardados). Fica salvo apenas o resumo da análise.")
+
+    if not arquivos:
+        return
+    # "Ver no documento": consome o pedido de página ANTES de montar a pré-visualização
+    # (o Streamlit não deixa alterar um widget depois de criado).
+    jump = st.session_state.pop(f"jump_{dig}", None)
+    if jump:
+        st.session_state[f"verpdf_{dig}"] = jump["arquivo"]
+        st.session_state[f"verpg_{dig}"] = int(jump["pagina"])
+    _visualizar(arquivos, dig)
+
+    guardado = st.session_state.get("_pareceres", {}).get(dig)
+    p = guardado["parecer"] if guardado and guardado["assinatura"] == conferencia.assinatura(arquivos) else None
+    if p is None:
+        if st.button("Montar o parecer completo destes documentos", key=f"parecer_{dig}"):
+            with st.spinner("Lendo os documentos…"):
+                p = conferencia.analisar(arquivos, dig, r["Entidade"])
+            st.session_state.setdefault("_pareceres", {})[dig] = {
+                "assinatura": conferencia.assinatura(arquivos), "parecer": p}
+            st.rerun()
+        return
+    with st.expander("Parecer completo (formato oficial)"):
+        _mostrar_parecer(p, dig)
+    with st.expander("Leitura por IA (apoio)"):
+        _leitura_ia(arquivos, dig, r["Entidade"])
+
+
+def _analisar_e_guardar(dig, r, reg, arquivos, origem, como, versao):
+    if not any(arquivos.values()):
+        st.warning("Nenhum arquivo para analisar.")
+        return
+    barra = st.progress(0.0, text="Começando a leitura…")
+    try:
+        p = conferencia.analisar(arquivos, dig, r["Entidade"],
+                                 progresso=lambda t, x: barra.progress(min(max(x, 0.0), 1.0), text=t))
+    except Exception as erro:
+        barra.empty()
+        print(f"[documental] análise falhou {dig}: {erro}")
+        st.error("Não consegui ler esses documentos. Pode ser um arquivo protegido por senha, "
+                 "corrompido ou uma digitalização muito ruim — confira à mão.")
+        return
+    barra.empty()
+    _guardar(reg, p, arquivos, origem, como, versao)
+    st.session_state[f"_arq_{dig}"] = arquivos
+    st.session_state.setdefault("_pareceres", {})[dig] = {"assinatura": conferencia.assinatura(arquivos),
+                                                         "parecer": p}
+    _salvar_e_recarregar("Análise concluída e salva.")
+
+
+# ------------------------------------------------------------------ documentos e parecer
 
 @st.cache_data(show_spinner=False, max_entries=40)
 def _render_pagina(pdf_bytes, pagina, dpi=130):
-    """Renderiza UMA página do PDF como imagem PNG (sempre aparece, ao contrário
-    do iframe). Devolve (png_bytes, total_de_paginas)."""
+    """Uma página do PDF como imagem PNG. Devolve (png_bytes, total_de_paginas)."""
     import io as _io
     import pypdfium2 as pdfium
     doc = pdfium.PdfDocument(pdf_bytes)
@@ -240,154 +539,66 @@ def _render_pagina(pdf_bytes, pagina, dpi=130):
             pass
 
 
-def _visualizar_pdfs(arquivos, dig, aberto=False):
-    """Pré-visualização do documento (página renderizada como imagem)."""
-    todos = [(g, n, b) for g, lst in arquivos.items() for n, b in lst]
+def _visualizar(arquivos, dig):
+    """Pré-visualização do documento escolhido (PDF página a página, ou a foto)."""
+    todos = [(n, b) for lst in arquivos.values() for n, b in lst]
     if not todos:
         return
-    with st.expander(":material/picture_as_pdf: Documento (pré-visualização)", expanded=aberto):
-        nomes = [n for _, n, _ in todos]
-        escolha = st.selectbox("Documento", nomes, key=f"verpdf_{dig}", label_visibility="collapsed")
-        dados = next((b for _, n, b in todos if n == escolha), None)
-        if not dados:
-            return
-        try:
-            pagina = int(st.session_state.get(f"verpg_{dig}", 1))
+    nomes = [n for n, _ in todos]
+    escolha = st.selectbox("Documento", nomes, key=f"verpdf_{dig}")
+    dados = next((b for n, b in todos if n == escolha), None)
+    if not dados:
+        return
+    if texto_mod._eh_imagem(dados):
+        st.image(dados, width="stretch")
+        st.caption(escolha)
+        return
+    try:
+        pagina = int(st.session_state.get(f"verpg_{dig}", 1))
+        png, total = _render_pagina(dados, pagina)
+        if total > 1:
+            pagina = st.slider("Página", 1, total, min(pagina, total), key=f"verpg_{dig}")
             png, total = _render_pagina(dados, pagina)
-            if total > 1:
-                pagina = st.slider("Página", 1, total, min(pagina, total), key=f"verpg_{dig}")
-                png, total = _render_pagina(dados, pagina)
-            st.image(png, width="stretch")
-            st.caption(f"{escolha} — página {min(pagina, total)} de {total}")
-        except Exception:
-            st.caption("Não consegui pré-visualizar — use o botão de download para abrir o arquivo.")
+        st.image(png, width="stretch")
+        st.caption(f"{escolha} — página {min(pagina, total)} de {total}")
+    except Exception:
+        st.caption("Não consegui pré-visualizar este arquivo.")
 
 
-def _parecer_da_sessao(dig, arquivos, r, check):
-    """Mostra o botão de análise e devolve o parecer atual (ou None)."""
-    guardados = st.session_state.setdefault("_pareceres", {})
-    atual = guardados.get(dig)
-    if not any(arquivos.values()):
-        return None
-    ass = conferencia.assinatura(arquivos)
-    if atual and atual["assinatura"] == ass:
-        return atual["parecer"]
-    if atual:
-        st.info("Os arquivos mudaram desde a última análise.")
-    teste = bool(st.session_state.get(f"_teste_{dig}"))
-    cnpj_param = None if teste else dig          # no teste, usa o CNPJ/nome do próprio exemplo
-    nome_param = None if teste else r["Entidade"]
-    n_pdf = sum(len(v) for v in arquivos.values())
-    rotulo = "Rodar análise de exemplo" if teste else f"Analisar {n_pdf} documento(s)"
-    if st.button(rotulo, type="primary", icon=":material/play_arrow:", key=f"analisar_{dig}"):
-        barra = st.progress(0.0, text="Começando a leitura…")
-
-        def _prog(txt, frac):
-            barra.progress(min(max(frac, 0.0), 1.0), text=txt)
-        try:
-            p = conferencia.analisar(arquivos, cnpj_param, nome_param, progresso=_prog)
-        except Exception as erro:  # nunca derrubar a tela
-            barra.empty()
-            st.error("Não consegui ler esse(s) PDF(s). Pode ser um arquivo protegido por "
-                     "senha, corrompido ou uma digitalização muito ruim. Tente abrir o PDF "
-                     "e usar **Salvar como** para gerar um novo, ou confira manualmente.")
-            with st.expander("Detalhe técnico (para suporte)"):
-                st.code(str(erro))
-            return None
-        barra.empty()
-        guardados[dig] = {"assinatura": ass, "parecer": p}
-        # pré-marca os itens que o mentor ainda não salvou
-        for chave, sug in conferencia.criterios(p).items():
-            if chave not in check and sug.get("sugestao") is not None:
-                st.session_state[f"chk_{chave}_{dig}"] = bool(sug["sugestao"])
-        st.rerun()
-    else:
-        st.caption("Documentos escaneados levam cerca de 2–3 s por página para ler.")
-    return None
-
-
-# Severidade dos ajustes, em ordem e em linguagem de gente.
 _SEV = [(("BLOQUEANTE",), "Impede a aprovação"),
         (("PENDENCIA",), "Falta providenciar"),
         (("ATENCAO", "ATENCAO_MENOR"), "Conferir com atenção")]
 
 
-# Gradientes escurecidos para o texto branco passar no contraste (WCAG AA).
-_RES_ESTILO = {
-    "APTO": ("APTO", "linear-gradient(105deg,#1B8A4E 0%,#13743F 100%)"),
-    "APTO_COM_AJUSTES": ("APTO COM AJUSTES", "linear-gradient(105deg,#C25E00 0%,#A64D00 100%)"),
-    "NAO_APTO": ("NÃO APTO", "linear-gradient(105deg,#C0392B 0%,#A5281B 100%)"),
-}
-
-
-def _resumo_destaque(p):
-    """Cartão enxuto no topo: só o resultado e a frase. Os detalhes de cada
-    regra ficam no checklist abaixo (sem repetir a mesma informação três vezes)."""
-    rotulo, fundo = _RES_ESTILO.get(p["resultado"], ("—", "linear-gradient(105deg,#7A7A7A,#5E5E5E)"))
-    ach = p.get("achados", [])
-    n_at = sum(1 for a in ach if a["status"] in ("ATENCAO", "ATENCAO_MENOR"))
-    n_pd = sum(1 for a in ach if a["status"] == "PENDENCIA")
-    n_bl = sum(1 for a in ach if a["status"] == "BLOQUEANTE")
-    partes = []
-    if n_bl:
-        partes.append(f"{n_bl} bloqueio(s)")
-    if n_pd:
-        partes.append(f"{n_pd} pendência(s)")
-    if n_at:
-        partes.append(f"{n_at} ponto(s) de atenção")
-    linha = " · ".join(partes) if partes else "nenhum ponto a corrigir"
-
-    st.html(
-        f'<div class="case-resumo" style="background:{fundo}">'
-        f'<div class="selo">PARECER DA CONFERÊNCIA</div>'
-        f'<div class="res">{rotulo}</div>'
-        f'<div class="ent">{html.escape(p.get("entidade", ""))}</div>'
-        f'<div class="fr">{html.escape(linha)}</div>'
-        f'</div>')
-
-
 def _mostrar_parecer(p, dig):
-    _resumo_destaque(p)
-
     receb = [d.get("arquivo", "") for d in p.get("documentos_recebidos", [])]
     falt = p.get("documentos_faltantes", [])
-    st.caption("**Recebidos:** " + (", ".join(receb) if receb else "—")
-               + "  ·  **Faltando:** " + (", ".join(falt) if falt else "nenhum"))
-
+    st.caption("Recebidos: " + _md(", ".join(receb) if receb else "—")
+               + "  ·  Faltando: " + _md(", ".join(falt) if falt else "nenhum"))
     if p.get("sem_texto") and not p.get("ocr_disponivel"):
         st.warning("Documento escaneado e o leitor de imagem (OCR) não está disponível aqui: "
-                   + ", ".join(p["sem_texto"]) + ". Confira esses manualmente.")
-
-    # O parecer oficial completo (tabelas, formato LIE) fica aqui, fechado.
-    # O mentor decide pelo resumo acima e pelo checklist; isto é só se quiser o detalhe.
-    with st.expander("Ver o parecer oficial completo (opcional)"):
-        ajustes = p.get("ajustes", [])
-        for cods, titulo in _SEV:
-            itens = [a for a in ajustes if a.get("status") in cods]
-            if not itens:
-                continue
+                   + _md(", ".join(p["sem_texto"])) + ". Confira esses à mão.")
+    ajustes = p.get("ajustes", [])
+    for cods, titulo in _SEV:
+        itens = [a for a in ajustes if a.get("status") in cods]
+        if itens:
             st.markdown(f"**{titulo}**")
             for a in itens:
-                st.markdown(f"- {a.get('texto', '')}")
-        infos = [a for a in ajustes if a.get("status") == "INFO"]
-        if infos:
-            st.markdown("**Observações**")
-            for a in infos:
-                st.markdown(f"- {a.get('texto', '')}")
-
-        st.markdown("**Parecer completo (formato oficial)**")
-        texto = parecer_mod.markdown(p)
-        texto = "\n".join("##" + ln if ln.startswith("#") else ln for ln in texto.split("\n"))
-        st.markdown(texto, unsafe_allow_html=True)
-
-        c1, c2 = st.columns(2)
-        nome = "".join(ch for ch in p["entidade"] if ch.isalnum() or ch in " -_")[:40].strip().replace(" ", "_")
-        # BOM (﻿) para o Word/Bloco de Notas do Windows abrir com acentos corretos.
-        c1.download_button("Baixar parecer (.md)", ("﻿" + parecer_mod.markdown(p)).encode("utf-8"),
-                           f"parecer_{nome}.md", "text/markdown", key=f"dlmd_{dig}", width="stretch")
-        c2.download_button("Baixar parecer (.json)",
-                           json.dumps(parecer_mod.json_publico(p), ensure_ascii=False, indent=2, default=str).encode("utf-8"),
-                           f"parecer_{nome}.json", "application/json", key=f"dljs_{dig}", width="stretch")
+                st.markdown(f"- {_md(a.get('texto', ''))}")
+    # O parecer oficial traz trechos dos documentos enviados pelas entidades:
+    # NUNCA renderizar como HTML (unsafe_allow_html) — vira texto puro.
+    texto = parecer_mod.markdown(p).replace("<br><sub>", " — ").replace("</sub>", "")
+    texto = "\n".join("##" + ln if ln.startswith("#") else ln for ln in texto.split("\n"))
+    st.markdown(texto)
+    c1, c2 = st.columns(2)
+    nome = "".join(ch for ch in p["entidade"] if ch.isalnum() or ch in " -_")[:40].strip().replace(" ", "_")
+    # BOM para o Word/Bloco de Notas do Windows abrir com acentos corretos.
+    c1.download_button("Baixar parecer (.md)", ("﻿" + parecer_mod.markdown(p)).encode("utf-8"),
+                       f"parecer_{nome}.md", "text/markdown", key=f"dlmd_{dig}", width="stretch")
+    c2.download_button("Baixar parecer (.json)",
+                       json.dumps(parecer_mod.json_publico(p), ensure_ascii=False, indent=2,
+                                  default=str).encode("utf-8"),
+                       f"parecer_{nome}.json", "application/json", key=f"dljs_{dig}", width="stretch")
 
 
 def _simnao(v):
@@ -395,17 +606,13 @@ def _simnao(v):
 
 
 def _leitura_ia(arquivos, dig, nome):
-    """Leitura dos documentos por IA (apoio opcional). Roda só quando o mentor
-    clica (controle de custo) e guarda o resultado na sessão."""
+    """Leitura por IA (apoio opcional). Roda só quando o mentor clica (custo)."""
     if not ia.disponivel():
-        st.caption(":material/smart_toy: Leitura por IA desligada — para ativar, configure a "
-                   "seção [ia] no Secrets (Claude na nuvem ou Ollama local).")
+        st.caption("Leitura por IA desligada — para ativar, configure a seção [ia] no Secrets.")
         return
     sig = conferencia.assinatura(arquivos)
     guardado = st.session_state.get(f"_ia_{dig}")
     atual = guardado if (guardado and guardado.get("sig") == sig) else None
-
-    st.markdown("**Leitura por IA (apoio)**")
     if atual is None:
         if st.button("Ler com IA", key=f"ia_btn_{dig}", icon=":material/smart_toy:"):
             with st.spinner("A IA está lendo os documentos…"):
@@ -414,178 +621,35 @@ def _leitura_ia(arquivos, dig, nome):
             st.rerun()
         st.caption("A IA lê e resume o que encontrou; as regras acima continuam valendo. Você confirma.")
         return
-
     if atual.get("err") or not atual.get("res"):
         st.warning(atual.get("err") or "A IA não retornou resultado.")
         if st.button("Tentar de novo", key=f"ia_retry_{dig}"):
             st.session_state.pop(f"_ia_{dig}", None)
             st.rerun()
         return
-
     r = atual["res"]
-    with st.container(border=True):
-        fin = r.get("finalidade_esportiva") or {}
-        man = r.get("mandato") or {}
-        reg = r.get("registro_cartorio") or {}
-        st.caption(f"IA: {r.get('_provedor', '')} · {r.get('_modelo', '')}")
-        if r.get("resumo"):
-            st.markdown(r["resumo"])
-        st.markdown(f"- **Finalidade esportiva:** {_simnao(fin.get('tem'))}"
-                    + (f" · {fin.get('artigo')}" if fin.get("artigo") else ""))
-        if fin.get("trecho"):
-            st.caption(f"› “{fin['trecho']}”")
-        periodo = " a ".join(x for x in [man.get("inicio"), man.get("fim")] if x)
-        st.markdown(f"- **Mandato vigente:** {_simnao(man.get('vigente'))}"
-                    + (f" · {periodo}" if periodo else ""))
-        st.markdown(f"- **Registro em cartório:** estatuto {_simnao(reg.get('estatuto'))} · "
-                    f"ata {_simnao(reg.get('ata'))}")
-        pts = r.get("pontos_atencao") or []
-        if pts:
-            st.markdown("**Pontos de atenção (IA):**")
-            for pt in pts[:6]:
-                st.markdown(f"- {pt}")
-        st.caption("Leitura de apoio — confirme com os documentos e o checklist. Pode errar.")
+    fin = r.get("finalidade_esportiva") or {}
+    man = r.get("mandato") or {}
+    reg = r.get("registro_cartorio") or {}
+    st.caption(f"IA: {r.get('_provedor', '')} · {r.get('_modelo', '')}")
+    if r.get("resumo"):
+        st.markdown(_md(r["resumo"]))
+    st.markdown(f"- Finalidade esportiva: {_simnao(fin.get('tem'))}"
+                + (f" · {_md(fin.get('artigo'))}" if fin.get("artigo") else ""))
+    if fin.get("trecho"):
+        st.caption("Trecho: “" + _md(fin["trecho"]) + "”")
+    periodo = " a ".join(x for x in [man.get("inicio"), man.get("fim")] if x)
+    st.markdown(f"- Mandato vigente: {_simnao(man.get('vigente'))}" + (f" · {_md(periodo)}" if periodo else ""))
+    st.markdown(f"- Registro em cartório: estatuto {_simnao(reg.get('estatuto'))} · ata {_simnao(reg.get('ata'))}")
+    for pt in (r.get("pontos_atencao") or [])[:6]:
+        st.markdown(f"- {_md(pt)}")
+    st.caption("Leitura de apoio — confirme com os documentos. Pode errar.")
     if st.button("Reler com IA", key=f"ia_reler_{dig}"):
         st.session_state.pop(f"_ia_{dig}", None)
         st.rerun()
 
 
-def _item_conferencia(chave, cri, dig, nomes_doc):
-    """Abaixo de cada item: status curto, o essencial em linguagem simples, e
-    (só na finalidade) o trecho do estatuto. Botão para abrir o documento na
-    página exata. Pensado para o mentor bater o olho em 30."""
-    if not cri:
-        st.caption("Sem documento/leitura — confira manualmente.")
-        return
-    badge = _BADGE.get(cri.get("cor"), "")
-    detalhe = (cri.get("detalhe") or "").strip()
-    limite = 150 if chave == "est_finalidade" else 90
-    if len(detalhe) > limite:
-        detalhe = detalhe[:limite].rstrip() + "…"
-    st.caption(f"{badge} · {detalhe}" if detalhe else (badge or ""))
-    # O trecho só na finalidade esportiva (é o que o mentor mais precisa ver).
-    if chave == "est_finalidade" and cri.get("evidencia"):
-        st.caption(f"› trecho no estatuto: “{cri['evidencia']}”")
-    arq, pag = cri.get("arquivo"), cri.get("pagina")
-    if arq and arq in nomes_doc and pag:
-        if st.button(f"Abrir no documento (pág. {pag})", key=f"ir_{chave}_{dig}",
-                     icon=":material/menu_book:"):
-            st.session_state[f"jump_{dig}"] = {"arquivo": arq, "pagina": int(pag)}
-            st.rerun()
-
-
-def _analisar(f, dig):
-    linha = f[f["dig"] == dig]
-    if linha.empty:
-        return
-    r = linha.iloc[0]
-    estado = _calculo.estado()
-    reg = proc.registro(estado, dig)
-    check = dict(reg.get("doc_check", {}))
-
-    with st.container(border=True):
-        titulo = r["Entidade"] + ("  ·  interesse do patrocinador" if r["interesse"] else "")
-        st.markdown(f"### {titulo}")
-        st.caption(
-            f"Nota {int(r['Nota'])} · posição {int(r['Posição'])} · {r['Cidade']}/{r['UF']} · "
-            f"fundação em {r.get('_data_fundacao', '—')} · {r['Anos']} anos (referência para a regra de 1 ano)"
-        )
-        salvo = reg.get("doc_parecer")
-        if salvo:
-            st.caption(f"Último parecer salvo ({salvo.get('data')}): "
-                       f"{parecer_mod.RESULTADO_TXT.get(salvo.get('resultado'), '—')} · "
-                       f"{', '.join(salvo.get('arquivos', []))}")
-
-        arquivos = _arquivos(dig, r["Entidade"])
-        # "Conferir no documento": um botão de item pediu para abrir o PDF numa
-        # página. Consumimos aqui, ANTES de montar a pré-visualização, para não
-        # alterar o widget depois de criado (regra do Streamlit).
-        jump = st.session_state.pop(f"jump_{dig}", None)
-        if jump:
-            st.session_state[f"verpdf_{dig}"] = jump["arquivo"]
-            st.session_state[f"verpg_{dig}"] = int(jump["pagina"])
-        p = _parecer_da_sessao(dig, arquivos, r, check)
-        if p:
-            cL, cR = st.columns([5, 6], gap="medium")
-            with cL:
-                _visualizar_pdfs(arquivos, dig, aberto=True)
-            with cR:
-                _mostrar_parecer(p, dig)
-                _leitura_ia(arquivos, dig, r["Entidade"])
-        else:
-            _visualizar_pdfs(arquivos, dig, aberto=False)
-        crit = conferencia.criterios(p) if p else {}
-
-        st.markdown("**Confira e marque** — o sistema já pré-marcou o que encontrou "
-                    "(Conforme · Confira · Falta). Corrija se precisar e aprove ou exclua.")
-        nomes_doc = {n for _g, lst in arquivos.items() for n, _b in lst}
-        novos = {}
-        for grupo, itens in CRITERIOS.items():
-            st.markdown(f"**:material/description: {grupo}**")
-            for chave, rot in itens:
-                cri = crit.get(chave)
-                k = f"chk_{chave}_{dig}"
-                if k not in st.session_state:
-                    if chave in check:            # já conferido antes: respeita o mentor
-                        st.session_state[k] = bool(check.get(chave))
-                    else:                          # pré-marca pelo parecer (só o que é conforme)
-                        st.session_state[k] = ((cri or {}).get("sugestao") is True)
-                novos[chave] = st.checkbox(rot, key=k)
-                _item_conferencia(chave, cri, dig, nomes_doc)
-
-        conferidos = sum(1 for k, _ in _TODAS if novos.get(k))
-        faltando = [rot for k, rot in _TODAS if not novos.get(k)]
-        st.progress(conferidos / len(_TODAS), text=f"{conferidos} de {len(_TODAS)} itens conferidos")
-
-        obs = st.text_area("Observações da análise (opcional)", value=reg.get("doc_obs", ""),
-                           key=f"docobs_{dig}", height=70)
-
-        def _persistir():
-            reg["doc_check"] = novos
-            reg["doc_obs"] = obs
-            if p:
-                reg["doc_parecer"] = conferencia.resumo_para_salvar(p)
-
-        b1, b2, b3 = st.columns(3)
-        if b1.button("Salvar conferência", key=f"salvarconf_{dig}"):
-            _persistir()
-            _calculo.salvar_estado()
-            st.success("Conferência salva.")
-            st.rerun()
-
-        if reg.get("doc_status") == "aprovada":
-            b2.success("Aprovada")
-            if b3.button("Reabrir", key=f"reabrir_{dig}"):
-                _persistir()
-                reg["doc_status"] = "pendente"
-                _calculo.salvar_estado()
-                st.rerun()
-        else:
-            if b2.button("Aprovar na documental", type="primary", key=f"aprovar_{dig}",
-                         disabled=bool(faltando)):
-                _persistir()
-                reg["doc_status"] = "aprovada"
-                _calculo.salvar_estado()
-                st.rerun()
-            if faltando:
-                b2.caption(f"Faltam {len(faltando)} item(ns) para poder aprovar.")
-            with b3:
-                graves = [a["texto"] for a in (p["ajustes"] if p else [])
-                          if a["status"] in ("BLOQUEANTE", "PENDENCIA")]
-                sugestao = "; ".join(graves[:2]) if graves else ("; ".join(faltando[:2]) if faltando else "")
-                motivo = st.text_input("Motivo da exclusão", value=sugestao, key=f"motivo_{dig}",
-                                       placeholder="ex.: estatuto sem finalidade esportiva")
-                if st.button("Excluir", key=f"excluir_{dig}"):
-                    if not motivo.strip():
-                        st.warning("Informe o motivo para excluir.")
-                    else:
-                        _persistir()
-                        reg["doc_status"] = "excluida"
-                        reg["doc_motivo"] = motivo.strip()
-                        _calculo.salvar_estado()
-                        st.success("Excluída. A próxima do ranking entrou automaticamente no pool.")
-                        st.rerun()
-
+# ------------------------------------------------------------------ descartadas
 
 def _banco_descartadas(f):
     desc = funil.descartadas(f)
