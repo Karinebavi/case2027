@@ -39,6 +39,9 @@ jobs:
         if: steps.chave.outputs.ok == 'true'
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Comenta com a permissão do próprio GitHub (dispensa instalar o app
+          # do Claude). Seguro aqui porque só roda em PR feito dentro do repo.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
