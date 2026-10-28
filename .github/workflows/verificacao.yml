@@ -1,0 +1,61 @@
+# Verificação automática — roda sozinha a cada envio para o GitHub (e toda
+# segunda-feira, para pegar falhas novas descobertas nas bibliotecas).
+# Gratuita: não usa IA nem chave nenhuma. Explicação em docs/REVISAO-AUTOMATICA.md.
+name: Verificação automática
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 11 * * 1"  # segunda, 8h de Brasília
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verificacao-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  codigo:
+    name: Código, regras e segurança
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Erros de código
+        run: ruff check . --output-format github
+
+      - name: Regras do projeto (testes)
+        run: pytest -q
+
+      - name: Segurança do código
+        run: bandit -r . -x ./testes -ll -q
+
+      - name: Bibliotecas com falha conhecida
+        run: pip-audit -r requirements.txt --progress-spinner off
+
+  chaves:
+    name: Chaves e senhas vazadas
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # confere o histórico inteiro, não só o último envio
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

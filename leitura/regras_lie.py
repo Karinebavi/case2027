@@ -24,7 +24,6 @@ from difflib import SequenceMatcher
 from leitura import datas as D
 from leitura.campos import sem_acento
 from leitura.documento import Evidencia
-from leitura.extratores import cargo_canonico
 
 OK, ATENCAO, ATENCAO_MENOR, PENDENCIA, BLOQUEANTE, INFO = (
     "OK", "ATENCAO", "ATENCAO_MENOR", "PENDENCIA", "BLOQUEANTE", "INFO")

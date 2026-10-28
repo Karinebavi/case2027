@@ -1,0 +1,80 @@
+# Revisão do código pelo Claude — comenta cada proposta de mudança (pull
+# request) antes de ela entrar no app. Usa a chave ANTHROPIC_API_KEY cadastrada
+# nos Secrets do GitHub (gasta créditos da Anthropic a cada revisão).
+# Sem a chave cadastrada, o passo é pulado sem erro. Ver docs/REVISAO-AUTOMATICA.md.
+name: Revisão pelo Claude
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+jobs:
+  revisao:
+    # O repositório é público: só revisa propostas feitas aqui dentro. PR de
+    # terceiros (fork) não recebe a chave e não gasta crédito.
+    if: github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chave do Claude cadastrada?
+        id: chave
+        env:
+          TEM: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+        run: echo "ok=$TEM" >> "$GITHUB_OUTPUT"
+
+      - name: Aviso
+        if: steps.chave.outputs.ok != 'true'
+        run: echo "::notice::Revisão do Claude pulada — cadastre o secret ANTHROPIC_API_KEY (docs/REVISAO-AUTOMATICA.md)."
+
+      - uses: actions/checkout@v6
+        if: steps.chave.outputs.ok == 'true'
+        with:
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@v1
+        if: steps.chave.outputs.ok == 'true'
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Você revisa o CASE 2027, sistema em Python/Streamlit do Instituto
+            Imaginação que pontua, classifica e seleciona entidades esportivas
+            (OSCs). A dona do projeto NÃO é programadora: escreva em português,
+            em linguagem simples, curto e direto. O branch da PR já está no
+            diretório atual. Antes de revisar, leia docs/LOGICA-DO-SISTEMA.md.
+
+            Procure, em ordem de importância:
+            1. Bugs: algo que quebra, calcula nota errada ou perde dado.
+            2. Regras combinadas do projeto (docs/LOGICA-DO-SISTEMA.md):
+               - a Fase 1 NUNCA exclui entidade; pendência vira só o selo "Atenção";
+               - "documento incompleto" não pode virar "não tem finalidade esportiva";
+               - a interface não usa emojis.
+            3. Segurança e LGPD: dados pessoais (nome, CNPJ, contato, documentos)
+               nunca podem aparecer em log, mensagem de erro ou ser enviados a
+               terceiros sem necessidade; chave ou senha escrita no código;
+               arquivo real (.csv, .pdf, .xlsx, dados_base/, secrets.toml) sendo
+               versionado; HTML montado com dados da inscrição sem escapar
+               (unsafe_allow_html); download de URL sem a checagem de endereço
+               de regras/wix.py; PDF/foto enviados por entidades tratados sem
+               limite de tamanho.
+            4. Desempenho só quando for perceptível para quem usa (ex.: reler
+               todos os PDFs a cada clique).
+
+            Não comente estilo, nomes de variáveis ou formatação.
+            Use `mcp__github_inline_comment__create_inline_comment` (com
+            `confirmed: true`) para cada problema real, na linha exata, dizendo
+            o que pode acontecer e como corrigir. No fim, deixe UM comentário
+            geral com `gh pr comment` resumindo: "Pode entrar", "Pode entrar
+            com ressalvas" ou "Precisa corrigir antes", e por quê. Se não
+            achar nada, diga isso — não invente problema. Só poste comentários
+            no GitHub; não responda em mensagem.
+          claude_args: |
+            --model claude-sonnet-5-5
+            --max-turns 30
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read,Grep,Glob"

@@ -111,7 +111,6 @@ def _feedback_equipe():
 
 def _kpis(work):
     cidades = work["cidade"].astype(str).str.strip() if "cidade" in work.columns else pd.Series([], dtype=str)
-    notas = pd.to_numeric(work["Nota"], errors="coerce")
     em_class = work[work["Situação"].isin(["Classificada", "Fila de espera"])]
     c = st.columns(5)
     c[0].metric("Inscrições", len(work))

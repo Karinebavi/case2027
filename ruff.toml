@@ -1,0 +1,9 @@
+# Verificação automática do código (roda no GitHub a cada envio).
+# Só regras que acham ERRO de verdade — nada de implicância de estilo:
+#   E9 = erro de sintaxe · F = nome não definido, import sobrando · B = bugs comuns
+target-version = "py312"
+extend-exclude = ["testes/casos_reais.py"]
+
+[lint]
+select = ["E9", "F", "B"]
+ignore = ["B905"]  # zip() sem strict=: aqui as listas têm sempre o mesmo tamanho

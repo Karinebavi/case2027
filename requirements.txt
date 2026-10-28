@@ -1,13 +1,13 @@
 # Versões fixadas (build reprodutível e previsível). Ao atualizar, teste antes.
-streamlit==1.63.0
+streamlit==1.66.1
 pandas==3.0.3
 openpyxl==3.1.5
-pypdf==6.19.0
+pypdf==6.21.2
 pdfplumber==0.11.10
 validate-docbr==2.0.0
 pytesseract==0.3.13
 pypdfium2==5.13.0
-pillow==12.2.0
+pillow==13.0.0
 requests==2.33.1
 plotly==7.1.0
 wordcloud==1.9.6
