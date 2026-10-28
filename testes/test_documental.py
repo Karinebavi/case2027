@@ -78,6 +78,45 @@ def test_anexos_do_nosso_site_no_wix_podem_ser_baixados(monkeypatch):
     assert not wix._url_segura("https://exemplo.com/estatuto.pdf")
 
 
+class _Resposta:
+    def __init__(self, destino=None, corpo=b"%PDF-1.4"):
+        self.is_redirect = destino is not None
+        self.headers = {"Location": destino} if destino else {}
+        self._corpo = corpo
+
+    def raise_for_status(self):
+        pass
+
+    def iter_content(self, _n):
+        yield self._corpo
+
+    def close(self):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        pass
+
+
+def _download_com_redirecionamento(monkeypatch, destino):
+    monkeypatch.setattr(wix, "_cfg", lambda: {"site_id": "abc-123"})
+    monkeypatch.setattr(wix.socket, "getaddrinfo", lambda *a, **k: (_ for _ in ()).throw(OSError()))
+    respostas = {"https://abc-123.usrfiles.com/ugd/doc.pdf": _Resposta(destino), destino: _Resposta()}
+    monkeypatch.setattr(wix.requests, "get", lambda url, **k: respostas[url])
+    return wix._baixar("https://abc-123.usrfiles.com/ugd/doc.pdf")
+
+
+def test_redirecionamento_para_fora_do_wix_e_recusado(monkeypatch):
+    with pytest.raises(RuntimeError, match="não permitida"):
+        _download_com_redirecionamento(monkeypatch, "http://169.254.169.254/latest/meta-data")
+
+
+def test_redirecionamento_dentro_do_wix_funciona(monkeypatch):
+    assert _download_com_redirecionamento(monkeypatch, "https://static.wixstatic.com/ugd/doc.pdf") == b"%PDF-1.4"
+
+
 def test_mais_recente_primeiro():
     envios = [_envio(cnpj="12345678000190", _id="novo"), _envio(cnpj="12345678000190", _id="velho")]
     assert wix.localizar(envios, cnpj="12345678000190")[0]["_id"] == "novo"

@@ -33,7 +33,7 @@ import ipaddress
 import os
 import re
 import socket
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import pandas as pd
 import requests
@@ -267,17 +267,26 @@ def _url_segura(url):
 
 
 def _baixar(url):
-    if not _url_segura(url):
-        raise RuntimeError("URL de documento não permitida (fora dos domínios do Wix).")
-    total, pedacos = 0, []
-    with requests.get(url, timeout=60, stream=True) as r:
-        r.raise_for_status()
-        for chunk in r.iter_content(65536):
-            total += len(chunk)
-            if total > _MAX_DOWNLOAD:
-                raise RuntimeError("Documento excede o tamanho máximo permitido (40 MB).")
-            pedacos.append(chunk)
-    return b"".join(pedacos)
+    # Redirecionamento seguido à mão: CADA endereço da cadeia passa pela checagem
+    # (senão um link aprovado poderia redirecionar para um endereço interno).
+    for _salto in range(5):
+        if not _url_segura(url):
+            raise RuntimeError("URL de documento não permitida (fora dos domínios do Wix).")
+        r = requests.get(url, timeout=60, stream=True, allow_redirects=False)
+        if r.is_redirect:
+            url = urljoin(url, r.headers.get("Location", ""))
+            r.close()
+            continue
+        total, pedacos = 0, []
+        with r:
+            r.raise_for_status()
+            for chunk in r.iter_content(65536):
+                total += len(chunk)
+                if total > _MAX_DOWNLOAD:
+                    raise RuntimeError("Documento excede o tamanho máximo permitido (40 MB).")
+                pedacos.append(chunk)
+        return b"".join(pedacos)
+    raise RuntimeError("Redirecionamentos demais ao baixar o documento.")
 
 
 def _resolver_form_docs(c):
