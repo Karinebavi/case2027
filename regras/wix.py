@@ -203,7 +203,9 @@ def sincronizar(form_id=None):
     linhas = []
     for s in subs:
         respostas = s.get("submissions", {}) or {}
-        linha = {"_submission_id": s.get("id", ""), "_data": s.get("createdDate", "")}
+        # "Data de envio": o mapeamento reconhece sozinho; a base usa para manter
+        # a inscrição mais recente quando o mesmo CNPJ se inscreve de novo.
+        linha = {"_submission_id": s.get("id", ""), "Data de envio": s.get("createdDate", "")}
         for alvo, valor in respostas.items():
             coluna = mapa.get(alvo, alvo)
             linha[coluna] = _valor_texto(valor)

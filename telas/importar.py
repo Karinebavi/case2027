@@ -6,6 +6,8 @@ Sobe o CSV das inscrições exportado do Wix. O sistema reconhece as colunas,
 normaliza e SOMA à base — que fica guardada e cresce a cada arquivo, sem
 duplicar entidades (o CNPJ é a chave). Você pode baixar a base e zerá-la.
 """
+import re
+
 import streamlit as st
 
 import pandas as pd
@@ -139,9 +141,16 @@ def _processar_df(novo, origem, sufixo):
 
 @st.cache_data(ttl=600, show_spinner=False)
 def _wix_formularios():
-    """Lista (id, nome) dos formulários, com os de inscrição no topo."""
+    """Lista (id, nome) dos formulários: primeiro o configurado no Secrets, depois
+    os de inscrição do ano mais recente (o 1º da lista é o que vem escolhido)."""
     forms = wix.listar_formularios()
-    return sorted(forms, key=lambda f: (0 if "inscri" in (f[1] or "").lower() else 1, f[1] or ""))
+    configurado = wix._cfg().get("form_id")
+
+    def ordem(f):
+        fid, nome = f[0], (f[1] or "")
+        anos = [int(a) for a in re.findall(r"\b20\d{2}\b", nome)]
+        return (fid != configurado, "inscri" not in nome.lower(), -max(anos, default=0), nome)
+    return sorted(forms, key=ordem)
 
 
 def _sincronizar_wix():

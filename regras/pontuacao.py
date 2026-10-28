@@ -125,8 +125,25 @@ def _blocos_detalhe(g):
     r6 = _txt(g("p24")).strip()
     out.append({"Bloco": "6 · Infraestrutura esportiva", "Resposta": r6 or "—",
                 "Pontos": INFRA_ESP.get(r6, 0), "Máx": 10, "Como foi contado": "tipo de espaço das atividades"})
-    tem_site = _txt(g("site")).strip() != ""
-    tem_rede = any(_txt(g(k)).strip() != "" for k in ["instagram", "facebook", "outra_rede"])
+    b7, como, canais = _digital(g)
+    out.append({"Bloco": "7 · Presença digital", "Resposta": canais, "Pontos": b7, "Máx": 10,
+                "Como foi contado": f"{como} → {b7} pts"})
+    return out
+
+
+def _digital(g):
+    """Bloco 7 — (pontos, como foi contado, canais). Em 2027 vem da pergunta de
+    marcar "Quais canais digitais a entidade tem hoje?"; nas bases antigas, dos
+    campos de link (um por rede)."""
+    marcados = _txt(g("canais")).lower()
+    if marcados.strip():
+        tem = {"site": "site" in marcados, "Instagram": "instagram" in marcados,
+               "Facebook": "facebook" in marcados, "outra rede": "outra rede" in marcados}
+    else:
+        tem = {nome: _txt(g(k)).strip() != "" for nome, k in
+               [("site", "site"), ("Instagram", "instagram"), ("Facebook", "facebook"), ("outra rede", "outra_rede")]}
+    tem_site = tem["site"]
+    tem_rede = tem["Instagram"] or tem["Facebook"] or tem["outra rede"]
     if tem_site and tem_rede:
         b7, como = 6, "site + redes sociais"
     elif tem_site:
@@ -135,11 +152,7 @@ def _blocos_detalhe(g):
         b7, como = 10, "só redes sociais"
     else:
         b7, como = 4, "sem canais digitais"
-    canais = ", ".join(nome for nome, k in [("site", "site"), ("Instagram", "instagram"),
-             ("Facebook", "facebook"), ("outra rede", "outra_rede")] if _txt(g(k)).strip()) or "nenhum"
-    out.append({"Bloco": "7 · Presença digital", "Resposta": canais, "Pontos": b7, "Máx": 10,
-                "Como foi contado": f"{como} → {b7} pts"})
-    return out
+    return b7, como, ", ".join(nome for nome, sim in tem.items() if sim) or "nenhum"
 
 
 def detalhar(dados, mapa, cnpj):
@@ -171,16 +184,7 @@ def calcular(dados, mapa, hoje=None):
         b5 = INFRA_ADMIN.get(_txt(g("p23")).strip(), 0)
         b6 = INFRA_ESP.get(_txt(g("p24")).strip(), 0)
 
-        tem_site = _txt(g("site")).strip() != ""
-        tem_rede = any(_txt(g(k)).strip() != "" for k in ["instagram", "facebook", "outra_rede"])
-        if tem_site and tem_rede:
-            b7 = 6
-        elif tem_site:
-            b7 = 8
-        elif tem_rede:
-            b7 = 10
-        else:
-            b7 = 4
+        b7 = _digital(g)[0]
 
         # Observações operacionais (requisitos da mentoria online). Decisão da
         # Karine: a Fase 1 NÃO exclui ninguém. Estas pendências — e também ter
