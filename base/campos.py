@@ -22,7 +22,7 @@ CAMPOS = [
     ("Identificação", "data_envio", "Data de envio da inscrição", False,
      ["data de envio", "carimbo de data", "submission", "timestamp", "data/hora"]),
     ("Identificação", "beneficiarios", "Número de beneficiários", False,
-     ["beneficiários", "beneficiarios", "consegue atender"]),
+     ["beneficiários", "beneficiarios", "consegue atender", "pessoas a entidade atende"]),
 
     ("Contato", "responsavel", "Nome do responsável", False,
      ["nome completo do responsável", "nome completo do responsavel", "responsável pelo preenchimento"]),
@@ -37,7 +37,7 @@ CAMPOS = [
     ("Eliminatórias (Sim/Não)", "estatuto", "Estatuto com finalidade esportiva", True, ["estatuto"]),
     ("Eliminatórias (Sim/Não)", "computador", "Computador com câmera e microfone", True, ["computador", "câmera", "camera"]),
     ("Eliminatórias (Sim/Não)", "internet", "Internet para as reuniões", True, ["internet"]),
-    ("Eliminatórias (Sim/Não)", "disponibilidade", "Disponibilidade de 2h por semana (10 meses)", True, ["disponibilidade", "1h30", "2h por semana"]),
+    ("Eliminatórias (Sim/Não)", "disponibilidade", "Disponibilidade de 2h por semana (10 meses)", True, ["disponibilidade", "1h30", "2h por semana", "2h semanais"]),
     ("Eliminatórias (Sim/Não)", "modalidades", "Modalidades esportivas praticadas", False, ["modalidade"]),
 
     ("Perguntas de nota", "p18", "Elaboração — projetos que já escreveu", True,
@@ -50,9 +50,15 @@ CAMPOS = [
     ("Perguntas de nota", "p23", "Infraestrutura administrativa", True, ["gestão e administra", "administrativa", "gestão e administração"]),
     ("Perguntas de nota", "p24", "Infraestrutura esportiva", True, ["execução das atividades", "infraestrutura esportiva", "local das atividades", "local para a execução"]),
 
-    ("Canais digitais", "site", "Site (link)", True, ["possui site", "site"]),
-    ("Canais digitais", "instagram", "Instagram (link)", True, ["instagram"]),
-    ("Canais digitais", "facebook", "Facebook (link)", True, ["facebook"]),
+    # 2027: pergunta de marcar ("Quais canais digitais a entidade tem hoje?") —
+    # vem antes dos links para o campo único "Cole o link — site, Instagram..."
+    # não ser tomado pela pergunta de canais.
+    ("Canais digitais", "canais", "Canais digitais que tem (marcar)", False, ["quais canais digitais"]),
+    # Links: opcionais — a nota digital vem de "canais" quando existe (2027) e,
+    # nas bases antigas, de qualquer link preenchido.
+    ("Canais digitais", "site", "Site (link)", False, ["possui site", "site"]),
+    ("Canais digitais", "instagram", "Instagram (link)", False, ["instagram"]),
+    ("Canais digitais", "facebook", "Facebook (link)", False, ["facebook"]),
     ("Canais digitais", "outra_rede", "Outra rede social (link)", False, ["outra rede"]),
 ]
 

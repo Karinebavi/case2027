@@ -113,8 +113,8 @@ def ficha(df, entidade, dados=None, mapa=None):
 
     motivo = str(r.get("Motivo", "") or "")
     if motivo:
-        st.warning(f"**Por que a nota é {int(r['Nota'])}:** {motivo}. "
-                   "Os blocos abaixo mostram os pontos que teria, mas a nota final foi zerada por esse motivo.")
+        # Fase 1 não exclui nem zera: a pendência é só um aviso para o mentor.
+        st.warning(f"**Atenção:** {motivo}. A nota não muda por isso — confira na Fase 2 (documental).")
 
     st.markdown("**Memória de cálculo — como foi a pontuação, bloco a bloco**")
     det = []
@@ -134,8 +134,7 @@ def ficha(df, entidade, dados=None, mapa=None):
             "Média das aptas": st.column_config.NumberColumn("Média das aptas", width="small"),
             "Como foi contado": st.column_config.TextColumn("Como foi contado", width="medium"),
         })
-        st.caption(f"Soma dos blocos: {sum(d['Pontos'] for d in det)} de 70 pontos possíveis."
-                   + ("  A nota final foi zerada pelo motivo acima." if motivo else ""))
+        st.caption(f"Soma dos blocos: {sum(d['Pontos'] for d in det)} de 70 pontos possíveis.")
     else:
         tabela = [{"Bloco": b, "Pontos": v, "Média das aptas": m} for b, v, m in zip(BLOCOS, valores, medias)]
         st.dataframe(tabela, width="stretch", hide_index=True)

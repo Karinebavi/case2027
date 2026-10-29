@@ -63,9 +63,11 @@ def _rest(tabela):
 
 def _checar(resp, oque):
     if resp.status_code >= 300:
-        # O corpo da resposta pode conter dados — fica só no log do servidor.
-        print(f"[nuvem] {oque}: HTTP {resp.status_code} — {resp.text[:300]}")
-        raise NuvemErro(f"{oque}: HTTP {resp.status_code}")
+        # LGPD: o log leva só a operação e o código. "oque" pode trazer a chave
+        # processo/<CNPJ> e o corpo da resposta pode conter dados da inscrição.
+        operacao = oque.split(" ", 1)[0]
+        print(f"[nuvem] {operacao}: HTTP {resp.status_code}")
+        raise NuvemErro(f"{operacao}: HTTP {resp.status_code}")
     return resp
 
 
@@ -162,7 +164,7 @@ def historico(limite=200):
 
 def parar_com_erro(erro):
     """Mostra o problema e interrompe a tela (para nunca sobrescrever dado bom)."""
-    print(f"[nuvem] parar_com_erro: {erro}")   # detalhe técnico só no log do servidor
+    print(f"[nuvem] parar_com_erro ({type(erro).__name__})")  # sem detalhe: pode citar processo/<CNPJ>
     st.error(
         "Não consegui acessar o banco de dados na nuvem, então parei para não "
         "perder nada. Tente recarregar a página em 1 minuto. Se o Supabase ficou "

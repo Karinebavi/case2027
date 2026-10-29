@@ -185,8 +185,6 @@ def _comunicacao(f, contatos):
 
     grupos = {
         "Não passaram para a Fase 2 (abaixo do corte)": f[(~f["em_pool"]) & (f["Status"] == "Em classificação")],
-        "Fora do perfil": f[f["Status"] == "Fora do perfil"],
-        "Inelegíveis": f[f["Status"] == "Inelegível"],
         "Descartadas (documental/entrevista)": funil.descartadas(f),
     }
     escolha = st.selectbox("Grupo que vai receber o retorno", list(grupos.keys()))

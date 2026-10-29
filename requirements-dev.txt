@@ -1,0 +1,5 @@
+# Ferramentas da verificação automática (GitHub Actions). NÃO vão para o app online.
+ruff==0.17.3        # erros de código
+bandit==1.9.4       # falhas de segurança no código
+pip-audit==2.10.1   # bibliotecas com falha conhecida
+pytest==9.2.0       # testes das regras do projeto

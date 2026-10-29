@@ -47,10 +47,7 @@ def montar(scored, estado, pool_size, vagas):
     f["pos_pool"] = f["dig"].map(pos_pool)
 
     def rotulo(r):
-        if r["Status"] == "Inelegível":
-            return "Inelegível"
-        if r["Status"] == "Fora do perfil":
-            return "Fora do perfil"
+        # Fase 1 não exclui ninguém: todas chegam aqui como "Em classificação".
         if r["doc_status"] == "excluida":
             return "Excluída (documental)"
         if r["entrevista_status"] == "excluida":

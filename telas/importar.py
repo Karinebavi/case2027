@@ -6,6 +6,8 @@ Sobe o CSV das inscrições exportado do Wix. O sistema reconhece as colunas,
 normaliza e SOMA à base — que fica guardada e cresce a cada arquivo, sem
 duplicar entidades (o CNPJ é a chave). Você pode baixar a base e zerá-la.
 """
+import re
+
 import streamlit as st
 
 import pandas as pd
@@ -54,7 +56,7 @@ def _historico():
         try:
             linhas = nuvem.historico(300)
         except Exception as erro:
-            st.warning(f"Não consegui ler o histórico agora ({erro}).")
+            st.warning(f"Não consegui ler o histórico agora ({type(erro).__name__}).")
             return
         if not linhas:
             st.caption("Nenhuma alteração registrada ainda.")
@@ -75,7 +77,8 @@ def _processar_upload(arquivo):
         st.error(str(aviso))
         return
     except Exception as erro:
-        st.error(f"Não consegui ler esse arquivo. Detalhe técnico: {erro}")
+        # LGPD: o erro de leitura pode citar o conteúdo da linha (nome, CNPJ, e-mail).
+        st.error(f"Não consegui ler esse arquivo ({type(erro).__name__}). Confira se é o CSV exportado do Wix.")
         return
     _processar_df(novo, origem=getattr(arquivo, "name", ""), sufixo="csv")
 
@@ -86,12 +89,16 @@ def _processar_df(novo, origem, sufixo):
     colunas = list(novo.columns)
     auto = mapeamento.auto_map(colunas)
 
-    # Correção só das obrigatórias que o sistema não reconheceu
+    # Essenciais para a base: sem nome e CNPJ não dá para pontuar nem deduplicar.
+    # As demais perguntas obrigatórias, se não vierem no formulário (ex.: uma
+    # pergunta que só existe este ano), NÃO bloqueiam — elas pontuam 0.
+    ESSENCIAIS = {"nome_entidade", "cnpj"}
     obrig = [(ch, rot) for (_g, ch, rot, ob, _d) in campos_def.CAMPOS if ob]
     faltando = [(ch, rot) for ch, rot in obrig if not auto.get(ch)]
     manual = {}
     if faltando:
-        st.warning("Algumas colunas obrigatórias não foram reconhecidas. Indique a coluna certa:")
+        st.caption("Perguntas que o sistema não reconheceu neste formulário. Se existirem com "
+                   "outro nome, aponte a coluna; as que não existirem pontuam 0.")
         opcoes = ["— não encontrada —"] + colunas
         for ch, rot in faltando:
             escolha = st.selectbox(rot, opcoes, key=f"map_{ch}_{sufixo}")
@@ -100,12 +107,19 @@ def _processar_df(novo, origem, sufixo):
 
     mapa = dict(auto)
     mapa.update(manual)
-    ainda_falta = [rot for ch, rot in obrig if not mapa.get(ch)]
+    falta_ess = [rot for ch, rot in obrig if ch in ESSENCIAIS and not mapa.get(ch)]
+    falta_pont = [rot for ch, rot in obrig if ch not in ESSENCIAIS and not mapa.get(ch)]
 
-    st.write(f"**{len(novo)}** inscrições. "
-             + ("Tudo reconhecido." if not ainda_falta else f"Faltam: {', '.join(ainda_falta)}."))
+    if falta_ess:
+        st.warning(f"**{len(novo)}** inscrições. Faltam campos essenciais ({', '.join(falta_ess)}) — "
+                   "aponte a coluna certa acima para continuar.")
+    elif falta_pont:
+        st.info(f"**{len(novo)}** inscrições. As perguntas não encontradas "
+                f"({', '.join(falta_pont)}) vão pontuar 0 — o resto é somado normalmente.")
+    else:
+        st.write(f"**{len(novo)}** inscrições. Tudo reconhecido.")
 
-    if st.button("Somar à base", type="primary", disabled=bool(ainda_falta), key=f"somar_{sufixo}"):
+    if st.button("Somar à base", type="primary", disabled=bool(falta_ess), key=f"somar_{sufixo}"):
         novos_norm = normalizacao.normalizar(novo, mapa)
         base = base_dados.carregar()
         final, cnpjs_novos, n_atualizados = base_dados.acumular(base, novos_norm)
@@ -126,6 +140,20 @@ def _processar_df(novo, origem, sufixo):
         st.rerun()
 
 
+@st.cache_data(ttl=600, show_spinner=False)
+def _wix_formularios():
+    """Lista (id, nome) dos formulários: primeiro o configurado no Secrets, depois
+    os de inscrição do ano mais recente (o 1º da lista é o que vem escolhido)."""
+    forms = wix.listar_formularios()
+    configurado = wix._cfg().get("form_id")
+
+    def ordem(f):
+        fid, nome = f[0], (f[1] or "")
+        anos = [int(a) for a in re.findall(r"\b20\d{2}\b", nome)]
+        return (fid != configurado, "inscri" not in nome.lower(), -max(anos, default=0), nome)
+    return sorted(forms, key=ordem)
+
+
 def _sincronizar_wix():
     """Botão opcional: puxa as inscrições direto do Wix e soma à base."""
     if not wix.ativo():
@@ -135,10 +163,25 @@ def _sincronizar_wix():
     st.markdown("**Sincronizar com o Wix**")
     st.caption("Puxa as inscrições direto do formulário. Os documentos NÃO vêm por aqui — "
                "no formulário eles são enviados por um link à parte.")
+
+    form_id_sel = None
+    try:
+        forms = _wix_formularios()
+    except Exception as erro:
+        forms = []
+        st.caption(f"Não consegui listar os formulários agora ({type(erro).__name__}).")
+    if forms:
+        nomes = {nome: fid for fid, nome in forms}
+        escolha = st.selectbox(
+            "De qual formulário puxar?", list(nomes.keys()), key="wix_form_sel",
+            help="Para o teste com o ano passado, escolha o formulário de inscrição de 2026. "
+                 "As perguntas que só existem este ano pontuam 0 automaticamente.")
+        form_id_sel = nomes.get(escolha)
+
     if st.button("Buscar inscrições do Wix", key="wix_buscar", icon=":material/sync:"):
         with st.spinner("Buscando as inscrições no Wix…"):
             try:
-                df, info = wix.sincronizar()
+                df, info = wix.sincronizar(form_id=form_id_sel)
                 st.session_state["_wix_df"] = df
                 st.session_state["_wix_info"] = info
                 st.session_state.pop("_wix_erro", None)

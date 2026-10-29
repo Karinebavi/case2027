@@ -33,11 +33,12 @@ def _ler(dados):
 
 def assinatura(arquivos):
     """Identifica o conjunto de arquivos (para saber se o parecer está atualizado)."""
-    h = hashlib.md5()
+    # MD5 aqui só identifica o conteúdo (cache/duplicado) — não é segurança.
+    h = hashlib.md5(usedforsecurity=False)
     for grupo, lst in sorted(arquivos.items()):
         for _nome, dados in lst:
             h.update(grupo.encode())
-            h.update(hashlib.md5(dados).digest())
+            h.update(hashlib.md5(dados, usedforsecurity=False).digest())
     return h.hexdigest()
 
 
@@ -55,7 +56,7 @@ def analisar(arquivos, cnpj_inscricao=None, nome_inscricao=None, progresso=None,
         paginas = _ler(dados)
         d = Documento(nome, paginas, grupo)
         d.origem = _texto.origem_geral(paginas)
-        d.hash = hashlib.md5(dados).hexdigest()
+        d.hash = hashlib.md5(dados, usedforsecurity=False).hexdigest()
         docs.append(d)
     if progresso:
         progresso("Consultando o CNPJ e conferindo as regras…", 0.97)

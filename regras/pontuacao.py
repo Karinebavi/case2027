@@ -20,7 +20,11 @@ TOKENS = ["Esporte", "Cultura", "Infância", "Idoso", "PRONAS", "PRONON", "Emend
 NOTA_MECANISMO = {0: 5, 1: 10, 2: 3}  # 3 ou mais -> 2
 
 # Bloco 3 — Composição da equipe (alvo: 3 a 5)
-EQUIPE = {"1 ou 2": 8, "3 a 5": 10, "6 a 8": 4, "9 a 12": 3, "Mais de 12": 2}
+EQUIPE = {"1 ou 2": 8, "3 a 5": 10, "6 a 8": 4, "9 a 12": 3, "Mais de 12": 2,
+          # Faixas do formulário de 2026 (para o teste com inscrições do ano
+          # passado) — mesma curva: alvo 3-5 pessoas vale mais.
+          "1 e 2 colaboradores": 8, "Acima de 2 colaboradores": 10,
+          "Acima de 5 colaboradores": 4, "Acima de 10 colaboradores": 2}
 
 # Bloco 4 — Receita bruta anual (faixas do formulário FINAL; alvo: 51 a 150 mil).
 # Curva mantida do quadro original (5, 8, 10, 3, 2), remapeada para as novas faixas.
@@ -121,8 +125,25 @@ def _blocos_detalhe(g):
     r6 = _txt(g("p24")).strip()
     out.append({"Bloco": "6 · Infraestrutura esportiva", "Resposta": r6 or "—",
                 "Pontos": INFRA_ESP.get(r6, 0), "Máx": 10, "Como foi contado": "tipo de espaço das atividades"})
-    tem_site = _txt(g("site")).strip() != ""
-    tem_rede = any(_txt(g(k)).strip() != "" for k in ["instagram", "facebook", "outra_rede"])
+    b7, como, canais = _digital(g)
+    out.append({"Bloco": "7 · Presença digital", "Resposta": canais, "Pontos": b7, "Máx": 10,
+                "Como foi contado": f"{como} → {b7} pts"})
+    return out
+
+
+def _digital(g):
+    """Bloco 7 — (pontos, como foi contado, canais). Em 2027 vem da pergunta de
+    marcar "Quais canais digitais a entidade tem hoje?"; nas bases antigas, dos
+    campos de link (um por rede)."""
+    marcados = _txt(g("canais")).lower()
+    if marcados.strip():
+        tem = {"site": "site" in marcados, "Instagram": "instagram" in marcados,
+               "Facebook": "facebook" in marcados, "outra rede": "outra rede" in marcados}
+    else:
+        tem = {nome: _txt(g(k)).strip() != "" for nome, k in
+               [("site", "site"), ("Instagram", "instagram"), ("Facebook", "facebook"), ("outra rede", "outra_rede")]}
+    tem_site = tem["site"]
+    tem_rede = tem["Instagram"] or tem["Facebook"] or tem["outra rede"]
     if tem_site and tem_rede:
         b7, como = 6, "site + redes sociais"
     elif tem_site:
@@ -131,11 +152,7 @@ def _blocos_detalhe(g):
         b7, como = 10, "só redes sociais"
     else:
         b7, como = 4, "sem canais digitais"
-    canais = ", ".join(nome for nome, k in [("site", "site"), ("Instagram", "instagram"),
-             ("Facebook", "facebook"), ("outra rede", "outra_rede")] if _txt(g(k)).strip()) or "nenhum"
-    out.append({"Bloco": "7 · Presença digital", "Resposta": canais, "Pontos": b7, "Máx": 10,
-                "Como foi contado": f"{como} → {b7} pts"})
-    return out
+    return b7, como, ", ".join(nome for nome, sim in tem.items() if sim) or "nenhum"
 
 
 def detalhar(dados, mapa, cnpj):
@@ -144,7 +161,8 @@ def detalhar(dados, mapa, cnpj):
     alvo = _so_digitos(cnpj)
     for _, row in dados.iterrows():
         if col and _so_digitos(row.get(col, "")) == alvo:
-            return _blocos_detalhe(lambda ch: row.get(mapa.get(ch), "") if mapa.get(ch) else "")
+            # usada na hora, dentro desta volta do laço (não há captura tardia)
+            return _blocos_detalhe(lambda ch: row.get(mapa.get(ch), "") if mapa.get(ch) else "")  # noqa: B023
     return []
 
 
@@ -153,9 +171,9 @@ def calcular(dados, mapa, hoje=None):
     ref = hoje or date.today()
     linhas = []
     for _, row in dados.iterrows():
-        def g(chave):
+        def g(chave):  # usada só nesta volta do laço
             col = mapa.get(chave)
-            return row.get(col, "") if col else ""
+            return row.get(col, "") if col else ""  # noqa: B023
 
         n_elab = _conta_mecanismos(g("p18"))
         n_exec = _conta_mecanismos(g("p19"))
@@ -166,21 +184,13 @@ def calcular(dados, mapa, hoje=None):
         b5 = INFRA_ADMIN.get(_txt(g("p23")).strip(), 0)
         b6 = INFRA_ESP.get(_txt(g("p24")).strip(), 0)
 
-        tem_site = _txt(g("site")).strip() != ""
-        tem_rede = any(_txt(g(k)).strip() != "" for k in ["instagram", "facebook", "outra_rede"])
-        if tem_site and tem_rede:
-            b7 = 6
-        elif tem_site:
-            b7 = 8
-        elif tem_rede:
-            b7 = 10
-        else:
-            b7 = 4
+        b7 = _digital(g)[0]
 
-        # Eliminatórias da Etapa 1 — SÓ as operacionais (requisitos para a
-        # mentoria online). Estatuto/finalidade esportiva, tempo de 1 ano e
-        # modalidades NÃO excluem mais aqui: são verificados na conferência
-        # documental (Fase 2), onde está o filtro real de quem não segue.
+        # Observações operacionais (requisitos da mentoria online). Decisão da
+        # Karine: a Fase 1 NÃO exclui ninguém. Estas pendências — e também ter
+        # menos de 1 ano — NÃO zeram a nota nem tiram do ranking: viram apenas um
+        # selo "Atenção" para o mentor avaliar. O filtro real de quem não segue é
+        # a conferência documental (Fase 2).
         OPERACIONAIS = [
             ("computador", "Sem computador com câmera/microfone"),
             ("internet", "Sem internet para as reuniões"),
@@ -188,20 +198,16 @@ def calcular(dados, mapa, hoje=None):
         ]
         motivos = [texto for chave, texto in OPERACIONAIS
                    if _txt(g(chave)).strip().lower() != "sim"]
-        elegivel = not motivos
 
         anos = _anos(g("data_fundacao"), ref)  # informativo (coluna "Anos")
+        if anos is not None and anos < 1:
+            motivos.append("Menos de 1 ano de funcionamento")
 
-        # Sem corte de teto: ter muitos projetos (3+ elaborados/executados) NÃO
-        # exclui mais a entidade — todas pontuam normalmente. O filtro real de
-        # quem não segue é a conferência documental (Fase 2).
-        total = 0 if not elegivel else (b1 + b2 + b3 + b4 + b5 + b6 + b7)
-        if not elegivel:
-            status = "Inelegível"
-            motivo = " · ".join(motivos)
-        else:
-            status = "Em classificação"
-            motivo = ""
+        # TODAS pontuam e entram no ranking (sem eliminatória e sem corte de teto
+        # na Fase 1). A coluna "Motivo" é a OBSERVAÇÃO/sinalização, não exclusão.
+        total = b1 + b2 + b3 + b4 + b5 + b6 + b7
+        status = "Em classificação"
+        motivo = " · ".join(motivos)
 
         linhas.append({
             "Entidade": _txt(g("nome_entidade")),

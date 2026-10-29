@@ -33,7 +33,7 @@ import ipaddress
 import os
 import re
 import socket
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import pandas as pd
 import requests
@@ -189,19 +189,23 @@ def _buscar_submissoes(c, form_id):
     return linhas
 
 
-def sincronizar():
+def sincronizar(form_id=None):
     """Puxa as inscrições do Wix e devolve (DataFrame, info_str).
-    DataFrame: uma linha por inscrição, colunas = rótulos das perguntas."""
+    DataFrame: uma linha por inscrição, colunas = rótulos das perguntas.
+    form_id: se informado, puxa DESSE formulário (ex.: o de 2026 para teste);
+    senão usa o configurado no Secrets."""
     if not ativo():
         raise RuntimeError("Wix desligado — configure a seção [wix] no Secrets (api_key e site_id).")
     c = _cfg()
-    form_id = _resolver_form_id(c)
+    form_id = form_id or _resolver_form_id(c)
     mapa, nome_form = _mapa_target_rotulo(c, form_id)
     subs = _buscar_submissoes(c, form_id)
     linhas = []
     for s in subs:
         respostas = s.get("submissions", {}) or {}
-        linha = {"_submission_id": s.get("id", ""), "_data": s.get("createdDate", "")}
+        # "Data de envio": o mapeamento reconhece sozinho; a base usa para manter
+        # a inscrição mais recente quando o mesmo CNPJ se inscreve de novo.
+        linha = {"_submission_id": s.get("id", ""), "Data de envio": s.get("createdDate", "")}
         for alvo, valor in respostas.items():
             coluna = mapa.get(alvo, alvo)
             linha[coluna] = _valor_texto(valor)
@@ -243,7 +247,11 @@ def _url_segura(url):
     host = (p.hostname or "").lower()
     if p.scheme != "https" or not host:
         return False
-    if not any(host == h or host.endswith("." + h) for h in _HOSTS_WIX):
+    # Os anexos dos formulários ficam em <id-do-site>.usrfiles.com: libera SÓ o
+    # do nosso site (o de outro site continua bloqueado).
+    site = (_cfg().get("site_id") or "").strip().lower()
+    do_nosso_site = bool(site) and host == f"{site}.usrfiles.com"
+    if not do_nosso_site and not any(host == h or host.endswith("." + h) for h in _HOSTS_WIX):
         return False
     # Defesa em profundidade: se o host (já restrito aos domínios do Wix) resolver
     # para um IP interno, bloqueia. Se o DNS falhar, confia na allowlist de domínio.
@@ -259,17 +267,26 @@ def _url_segura(url):
 
 
 def _baixar(url):
-    if not _url_segura(url):
-        raise RuntimeError("URL de documento não permitida (fora dos domínios do Wix).")
-    total, pedacos = 0, []
-    with requests.get(url, timeout=60, stream=True) as r:
-        r.raise_for_status()
-        for chunk in r.iter_content(65536):
-            total += len(chunk)
-            if total > _MAX_DOWNLOAD:
-                raise RuntimeError("Documento excede o tamanho máximo permitido (40 MB).")
-            pedacos.append(chunk)
-    return b"".join(pedacos)
+    # Redirecionamento seguido à mão: CADA endereço da cadeia passa pela checagem
+    # (senão um link aprovado poderia redirecionar para um endereço interno).
+    for _salto in range(5):
+        if not _url_segura(url):
+            raise RuntimeError("URL de documento não permitida (fora dos domínios do Wix).")
+        r = requests.get(url, timeout=60, stream=True, allow_redirects=False)
+        if r.is_redirect:
+            url = urljoin(url, r.headers.get("Location", ""))
+            r.close()
+            continue
+        total, pedacos = 0, []
+        with r:
+            r.raise_for_status()
+            for chunk in r.iter_content(65536):
+                total += len(chunk)
+                if total > _MAX_DOWNLOAD:
+                    raise RuntimeError("Documento excede o tamanho máximo permitido (40 MB).")
+                pedacos.append(chunk)
+        return b"".join(pedacos)
+    raise RuntimeError("Redirecionamentos demais ao baixar o documento.")
 
 
 def _resolver_form_docs(c):
@@ -286,10 +303,32 @@ def _resolver_form_docs(c):
     raise RuntimeError(f"Há vários formulários de documentos — defina form_docs. Candidatos: {lista}")
 
 
+def _norm(s):
+    import unicodedata
+    s = unicodedata.normalize("NFD", str(s))
+    s = "".join(c for c in s if unicodedata.category(c) != "Mn").lower()
+    return re.sub(r"[^a-z0-9 ]", " ", s).strip()
+
+
+def _papel_do_campo(rotulo):
+    """Que dado de identificação um campo de TEXTO do formulário de documentos
+    traz: 'cnpj' | 'email' | 'entidade' | None. Cuidado com rótulos como
+    "Nome completo do responsável" ou "seu cargo na entidade" — não são o nome
+    da entidade."""
+    r = _norm(rotulo)
+    if "cnpj" in r and "cartao" not in r:
+        return "cnpj"
+    if "mail" in r:
+        return "email"
+    if "nome" in r and "entidade" in r and "responsavel" not in r and "presidente" not in r:
+        return "entidade"
+    return None
+
+
 def buscar_documentos(form_docs_id=None, limite=None, baixar=True):
-    """Puxa os documentos enviados no formulário de upload do Wix.
-    Devolve lista de {entidade, arquivos:{cartao_cnpj:[(nome,bytes)], estatuto, ata}}.
-    Com baixar=False, traz só os metadados (nome/URL), sem baixar os PDFs."""
+    """Puxa os envios do formulário de documentos do Wix (do mais novo ao mais
+    antigo). Cada envio: {entidade, cnpj, emails, arquivos:{cartao_cnpj, estatuto,
+    ata}, _id, _data}. Com baixar=False, arquivos = [(nome, url)] sem baixar."""
     if not ativo():
         raise RuntimeError("Wix desligado — configure a seção [wix] no Secrets.")
     c = _cfg()
@@ -301,7 +340,7 @@ def buscar_documentos(form_docs_id=None, limite=None, baixar=True):
     saida = []
     for s in subs:
         resp = s.get("submissions", {}) or {}
-        entidade = ""
+        ident = {"entidade": "", "cnpj": "", "emails": []}
         arquivos = {"cartao_cnpj": [], "estatuto": [], "ata": []}
         for alvo, valor in resp.items():
             rot = mapa_rot.get(alvo, alvo)
@@ -323,42 +362,116 @@ def buscar_documentos(form_docs_id=None, limite=None, baixar=True):
                             pass
                     else:
                         arquivos[grupo].append((nome, url))
-            elif "entidade" in (str(rot) + str(alvo)).lower() or "nome" in (str(rot) + str(alvo)).lower():
-                entidade = _valor_texto(valor)
-        saida.append({"entidade": entidade, "arquivos": arquivos,
-                      "_id": s.get("id"), "_data": s.get("createdDate", "")})
+                continue
+            papel = _papel_do_campo(rot)
+            texto = _valor_texto(valor).strip()
+            if papel == "cnpj":
+                ident["cnpj"] = re.sub(r"\D", "", texto)
+            elif papel == "email" and "@" in texto:
+                ident["emails"].append(texto.lower())
+            elif papel == "entidade" and texto:
+                ident["entidade"] = texto
+        saida.append({**ident, "arquivos": arquivos, "_id": s.get("id"), "_data": s.get("createdDate", "")})
     return saida, nome_form
 
 
-def _norm(s):
-    import unicodedata
-    s = unicodedata.normalize("NFD", str(s))
-    s = "".join(c for c in s if unicodedata.category(c) != "Mn").lower()
-    return re.sub(r"[^a-z0-9 ]", " ", s).strip()
+# Atalho "um nome contém o outro" só para nome completo: "Associação" sozinho
+# casaria com metade do pool (ressalva da revisão automática).
+_NOME_MIN_PALAVRAS, _NOME_MIN_LETRAS = 3, 12
 
 
-def documentos_da_entidade(nome, form_docs_id=None, minimo=0.6):
-    """Acha, no formulário de documentos do Wix, o envio da entidade (casa por
-    NOME) e baixa os arquivos dela. Devolve (arquivos, score) ou (None, score).
-    arquivos = {cartao_cnpj:[(nome,bytes)], estatuto:[...], ata:[...]}."""
+def _parecido(a, b):
+    """Semelhança (0 a 1) entre dois nomes já normalizados por _norm."""
     import difflib
-    envios, _ = buscar_documentos(form_docs_id=form_docs_id, baixar=False)
-    alvo = _norm(nome)
+    if not (a and b):
+        return 0.0
+    r = difflib.SequenceMatcher(None, a, b).ratio()
+    menor = min(a, b, key=len)
+    if (a in b or b in a) and len(menor.split()) >= _NOME_MIN_PALAVRAS and len(menor) >= _NOME_MIN_LETRAS:
+        r = max(r, 0.9)
+    return r
+
+
+# Por nome, só nome praticamente igual: "Associação Esportiva X" e "Associação
+# Esportiva Y" passam de 0,6 de semelhança e ligavam documentos à entidade errada.
+NOME_MINIMO = 0.85
+
+
+def localizar(envios, cnpj=None, emails=(), nome=None, minimo=NOME_MINIMO):
+    """Acha o envio de documentos de UMA entidade. Devolve (envio, como), com
+    como = 'CNPJ' | 'e-mail' | 'nome', ou (None, None).
+    Ordem: CNPJ exato → e-mail do responsável → nome completo parecido
+    (minimo=None desliga a busca por nome).
+    Os envios vêm do mais novo ao mais antigo: o primeiro que casa é o mais novo."""
+    cnpj = re.sub(r"\D", "", str(cnpj or ""))
+    if len(cnpj) == 14:
+        for e in envios:
+            if e.get("cnpj") == cnpj:
+                return e, "CNPJ"
+    alvo = _norm(nome or "")
+    contatos = {str(x).strip().lower() for x in emails if x and "@" in str(x)}
+    if contatos:
+        for e in envios:
+            # Um mesmo consultor pode preencher por várias entidades: o e-mail só
+            # vale se o nome no envio não for claramente de outra entidade.
+            nome_envio = _norm(e.get("entidade", ""))
+            if contatos & set(e.get("emails", [])) and (not alvo or not nome_envio
+                                                        or _parecido(alvo, nome_envio) >= 0.4):
+                return e, "e-mail"
+    if minimo is None:
+        return None, None
+    melhor, score = _mais_parecido(envios, alvo)
+    if melhor and score >= minimo:
+        return melhor, "nome"
+    return None, None
+
+
+def _mais_parecido(envios, alvo):
     melhor, score = None, 0.0
     for e in envios:
-        ne = _norm(e["entidade"])
-        r = difflib.SequenceMatcher(None, alvo, ne).ratio()
-        if alvo and ne and (alvo in ne or ne in alvo):
-            r = max(r, 0.9)
+        r = _parecido(alvo, _norm(e.get("entidade", "")))
         if r > score:
             melhor, score = e, r
-    if not melhor or score < minimo:
-        return None, score
+    return melhor, score
+
+
+def ligar(envios, entidades, minimo=NOME_MINIMO):
+    """Liga várias entidades aos seus envios de documentos de uma vez.
+    entidades: [{chave, cnpj, emails, nome}]. Devolve {chave: (envio, como)}.
+    CNPJ e e-mail valem direto. Por nome, cada envio fica com UMA entidade só —
+    a de nome mais parecido — para o mesmo documento não aparecer em duas."""
+    ligados, por_nome = {}, {}
+    for ent in entidades:
+        envio, como = localizar(envios, cnpj=ent.get("cnpj"), emails=ent.get("emails", ()),
+                                nome=ent.get("nome"), minimo=None)
+        if envio:
+            ligados[ent["chave"]] = (envio, como)
+            continue
+        envio, score = _mais_parecido(envios, _norm(ent.get("nome", "")))
+        if envio is not None and score >= minimo:
+            atual = por_nome.get(id(envio))
+            if atual is None or score > atual[1]:
+                por_nome[id(envio)] = (ent["chave"], score, envio)
+    usados = {id(e) for e, _ in ligados.values()}
+    for chave, _score, envio in por_nome.values():
+        if id(envio) not in usados:
+            ligados[chave] = (envio, "nome")
+    return ligados
+
+
+def grupos_enviados(envio):
+    """Quais documentos vieram no envio: subconjunto de cartao_cnpj/estatuto/ata."""
+    return sorted(g for g, lst in (envio or {}).get("arquivos", {}).items() if lst)
+
+
+def baixar_envio(envio):
+    """Baixa os arquivos de um envio (só de domínios do Wix, até 40 MB cada).
+    Devolve {cartao_cnpj:[(nome,bytes)], estatuto:[...], ata:[...]}."""
     arq = {"cartao_cnpj": [], "estatuto": [], "ata": []}
-    for g, lst in melhor["arquivos"].items():
+    for g, lst in (envio or {}).get("arquivos", {}).items():
         for nomearq, url in lst:
             try:
                 arq[g].append((nomearq, _baixar(url)))
-            except Exception:
-                pass
-    return arq, score
+            except Exception as erro:
+                print(f"[wix] não baixei um arquivo de {g} ({type(erro).__name__})")
+    return arq

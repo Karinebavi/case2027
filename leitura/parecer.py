@@ -46,7 +46,10 @@ def _identidade(doc, cnpj_esp, nomes_esp):
         return "outra", f"CNPJ {cnpjs[0]} no documento"
     if melhor is not None and melhor >= 0.6:
         return "confirmada", "nome da entidade no documento"
-    if melhor is not None and melhor < 0.34 and doc.denominacao():
+    # Só afirma "outra entidade" por nome fraco quando o documento foi lido por
+    # inteiro. Numa foto/escaneado curto (incompleto), o nome pode nem ter vindo
+    # na leitura — nesse caso é "confirmar manualmente", não descartar como alheio.
+    if melhor is not None and melhor < 0.34 and doc.denominacao() and not _doc_incompleto(doc):
         return "outra", f"nome no documento: {doc.denominacao()}"
     if melhor is None:
         return "sem_dados", ""
@@ -68,6 +71,20 @@ def _fmt_cnpj(c):
     return f"{c[:2]}.{c[2:5]}.{c[5:8]}/{c[8:12]}-{c[12:]}" if len(c) == 14 else c
 
 
+def _doc_incompleto(doc):
+    """True quando o documento foi recebido, mas a leitura indica que está
+    incompleto (foto de uma página, escaneado curto). Serve para NÃO confundir
+    'documento incompleto' com 'a entidade não tem a finalidade/registro'.
+    Um estatuto real costuma ter várias páginas e milhares de caracteres."""
+    if not doc:
+        return False
+    if getattr(doc, "sem_texto", False):
+        return True
+    n_pag = getattr(doc, "n_paginas", 0) or 0
+    txt = getattr(doc, "texto", "") or ""
+    return n_pag <= 1 or len(txt) < 1200
+
+
 def montar(documentos, cnpj_inscricao=None, nome_inscricao=None, data_ref=None, api=None, config=None,
            projeto=""):
     ref = data_ref or dt.date.today()
@@ -83,7 +100,7 @@ def montar(documentos, cnpj_inscricao=None, nome_inscricao=None, data_ref=None, 
         # onde o mentor subiu o PDF. Não atrapalha a separação de arquivos
         # misturados, que depende da classificação quando ela acerta um tipo real.
         d.tipo = tipo if tipo and tipo != "irrelevante" else (d.grupo or tipo)
-        d.hash = d.hash or hashlib.md5(d.texto.encode("utf-8")).hexdigest()
+        d.hash = d.hash or hashlib.md5(d.texto.encode("utf-8"), usedforsecurity=False).hexdigest()
         if d.hash in vistos and not d.sem_texto:
             d.status = "duplicado"
         vistos.setdefault(d.hash, d)
@@ -350,8 +367,16 @@ def sugestoes_criterios(p):
         out["cnpj_1ano"] = s(False, "vermelho", h1 if h1 and h1["status"] == R.BLOQUEANTE else h2)
     else:
         out["cnpj_1ano"] = de("HAB-01")
-    out["est_finalidade"] = de("HAB-05", ok_cor="amarelo")
     est, doc_est = pc["estatuto"], pc["doc_est"]
+    out["est_finalidade"] = de("HAB-05", ok_cor="amarelo")
+    # Não confundir "documento incompleto" com "não tem finalidade esportiva":
+    # se o estatuto enviado é uma foto/escaneado curto, a finalidade pode estar
+    # numa página que não veio. Sinaliza para conferir, em vez de reprovar.
+    if out["est_finalidade"].get("sugestao") in (False, None) and _doc_incompleto(doc_est):
+        out["est_finalidade"] = s(None, "amarelo",
+            detalhe="O estatuto enviado parece incompleto (poucas páginas ou foto de uma "
+                    "página), então não dá para confirmar a finalidade esportiva aqui. Isso "
+                    "NÃO quer dizer que a entidade não tem — peça o estatuto completo e confira.")
     if est:
         nums = [a["num"] for a in est["artigos"]]
         buracos = [n for n in range(1, max(nums) + 1) if n not in nums] if nums else []
@@ -366,6 +391,10 @@ def sugestoes_criterios(p):
     else:
         out["est_ordem"] = s(None, "amarelo", detalhe="Estatuto da entidade não recebido.")
     out["est_cartorio"] = de("REG-01")
+    if out["est_cartorio"].get("sugestao") in (False, None) and _doc_incompleto(doc_est):
+        out["est_cartorio"] = s(None, "amarelo",
+            detalhe="Estatuto incompleto (poucas páginas ou foto) — não dá para confirmar o "
+                    "registro em cartório. Peça o documento completo e confira.")
     r6, r7 = pior("REG-06"), pior("REG-07")
     if r6 and r6["status"] == R.OK:
         out["ata_vigencia"] = s(True, "amarelo", r7) if r7 else s(True, "verde", r6)
