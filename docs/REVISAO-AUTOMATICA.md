@@ -21,8 +21,10 @@ Se ficar vermelho, o GitHub também avisa por e-mail.
 
 ## 2. Revisão pelo Claude (opcional, usa créditos)
 
-Cada **proposta de mudança** (pull request) é lida pelo Claude antes de entrar no
-app. Ele comenta na linha exata o que pode dar problema e termina com
+Cada **proposta de mudança** (pull request) é lida pelo Claude **uma vez, quando é
+aberta**. Correções enviadas depois não disparam outra revisão (cada revisão gasta
+créditos). Para revisar de novo, ponha a etiqueta **revisar** na proposta
+(lado direito da página da proposta, em *Labels*). Ele comenta na linha exata o que pode dar problema e termina com
 "Pode entrar", "Pode entrar com ressalvas" ou "Precisa corrigir antes".
 Ele conhece as regras do projeto (lê `docs/LOGICA-DO-SISTEMA.md`).
 Arquivo: `.github/workflows/revisao-claude.yml`.

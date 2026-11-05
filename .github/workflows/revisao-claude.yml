@@ -1,12 +1,15 @@
 # Revisão do código pelo Claude — comenta cada proposta de mudança (pull
 # request) antes de ela entrar no app. Usa a chave ANTHROPIC_API_KEY cadastrada
 # nos Secrets do GitHub (gasta créditos da Anthropic a cada revisão).
+# Decisão da Karine (29/10/2026): UMA revisão por proposta, quando ela é aberta.
+# Correções enviadas depois NÃO revisam de novo; para revisar outra vez, ponha a
+# etiqueta "revisar" na proposta (só quem tem acesso ao repositório consegue).
 # Sem a chave cadastrada, o passo é pulado sem erro. Ver docs/REVISAO-AUTOMATICA.md.
 name: Revisão pelo Claude
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, ready_for_review, labeled]
 
 permissions:
   contents: read
@@ -16,8 +19,12 @@ permissions:
 jobs:
   revisao:
     # O repositório é público: só revisa propostas feitas aqui dentro. PR de
-    # terceiros (fork) não recebe a chave e não gasta crédito.
-    if: github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.draft
+    # terceiros (fork) não recebe a chave e não gasta crédito. Etiqueta só
+    # dispara se for a "revisar" (outras etiquetas não gastam crédito).
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository
+      && !github.event.pull_request.draft
+      && (github.event.action != 'labeled' || github.event.label.name == 'revisar')
     runs-on: ubuntu-latest
     steps:
       - name: Chave do Claude cadastrada?
