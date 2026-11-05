@@ -4,6 +4,7 @@ Testes da Documental: ligação inscrição ↔ documentos do Wix e o resumo que
 alimenta o quadro do pool. Só dados FICTÍCIOS (dados_exemplo/documentos).
 """
 import os
+from datetime import date
 
 import pytest
 
@@ -11,6 +12,8 @@ from leitura import conferencia, resumo
 from regras import contato, wix
 
 DOCS = "dados_exemplo/documentos"
+# Data fixa: o cartão de exemplo "envelhece" (mais de 30 dias vira amarelo).
+REF = date(2026, 10, 15)
 
 
 def _envio(entidade="", cnpj="", emails=(), _id="x", grupos=("cartao_cnpj", "estatuto", "ata")):
@@ -133,14 +136,14 @@ def _exemplos(sem=()):
 
 
 def test_resumo_dos_documentos_de_exemplo():
-    r = resumo.compacto(conferencia.analisar(_exemplos()))
+    r = resumo.compacto(conferencia.analisar(_exemplos(), data_ref=REF), ref=REF)
     assert {r[d]["cor"] for d in ("cartao", "estatuto", "ata")} == {"verde"}
     assert r["estatuto"]["curto"].startswith("Art.")
     assert "finalidade" in r["estatuto"]["trecho"].lower()
 
 
 def test_documento_que_nao_veio_fica_cinza_e_entra_no_pedido():
-    r = resumo.compacto(conferencia.analisar(_exemplos(sem=("ata",))))
+    r = resumo.compacto(conferencia.analisar(_exemplos(sem=("ata",)), data_ref=REF), ref=REF)
     assert r["ata"]["cor"] == "cinza"
     pedido = contato.modelo_pedir_documentos("Entidade Exemplo", resumo.pendencias(r))
     assert "Ata" in pedido

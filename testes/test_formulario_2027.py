@@ -16,6 +16,7 @@ ROTULOS = {
     "cidade": "10. Cidade",
     "resp": "1. Nome completo do responsável pelo preenchimento",
     "email": "2. E-mail do responsável pelo preenchimento",
+    "cartorio": "16. O estatuto e a ata de eleição da diretoria atual estão registrados em cartório?",
     "estatuto": "14. No estatuto social da entidade, o esporte aparece escrito entre as finalidades?",
     "computador": "17.  A entidade tem um computador ou notebook funcionando, com câmera e microfone?",
     "internet": "18.  A entidade tem acesso à internet para acompanhar as reuniões online?",
@@ -39,6 +40,7 @@ def _inscricao(cnpj, canais, links=""):
         ROTULOS["nome"]: "Associação Fictícia de Teste", ROTULOS["cnpj"]: cnpj,
         ROTULOS["fundacao"]: "2015-03-15", ROTULOS["uf"]: "SP", ROTULOS["cidade"]: "Campinas",
         ROTULOS["resp"]: "Pessoa Fictícia", ROTULOS["email"]: "teste@exemplo.org",
+        ROTULOS["cartorio"]: "Sim",
         ROTULOS["estatuto"]: " Sim — o estatuto já inclui o esporte entre as finalidades ou objetivos da entidade. ",
         ROTULOS["computador"]: "Sim", ROTULOS["internet"]: "Sim", ROTULOS["disp"]: "Sim",
         ROTULOS["p18"]: "Leis de Incentivo ao Esporte , Emenda Parlamentar",
@@ -65,6 +67,7 @@ def test_perguntas_de_2027_sao_reconhecidas():
     assert mapa["canais"] == ROTULOS["canais"]
     assert mapa["beneficiarios"] == ROTULOS["benef"]
     assert mapa["data_envio"] == ROTULOS["envio"]
+    assert mapa["estatuto"] == ROTULOS["estatuto"]  # e não a 16 (cartório), que vem antes
     for chave in ("p18", "p19", "p21", "p22", "p23", "p24", "computador", "internet", "disponibilidade"):
         assert mapa[chave], chave
 
