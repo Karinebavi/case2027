@@ -116,6 +116,8 @@ def ficha(df, entidade, dados=None, mapa=None):
         # Fase 1 não exclui nem zera: a pendência é só um aviso para o mentor.
         st.warning(f"**Atenção:** {motivo}. A nota não muda por isso — confira na Fase 2 (documental).")
 
+    _experiencia_esportiva(dados, r.get("CNPJ", ""))
+
     st.markdown("**Memória de cálculo — como foi a pontuação, bloco a bloco**")
     det = []
     if dados is not None and mapa is not None:
@@ -138,3 +140,31 @@ def ficha(df, entidade, dados=None, mapa=None):
     else:
         tabela = [{"Bloco": b, "Pontos": v, "Média das aptas": m} for b, v, m in zip(BLOCOS, valores, medias)]
         st.dataframe(tabela, width="stretch", hide_index=True)
+
+
+def _md_seguro(texto):
+    """Texto da inscrição sem virar link, negrito ou HTML no st.markdown."""
+    import re
+    return re.sub(r"([\\`*_{}\[\]()#+\-.!|<>~$:])", lambda m: chr(92) + m.group(1), str(texto or ""))
+
+
+def _experiencia_esportiva(dados, cnpj):
+    """Perguntas da experiência esportiva (não entram na nota, mas pesam na análise)."""
+    if dados is None:
+        return
+    from regras.memoria import so_digitos
+    alvo = so_digitos(cnpj)
+    linha = next((row for _, row in dados.iterrows() if so_digitos(row.get("cnpj", "")) == alvo), None)
+    if linha is None:
+        return
+    campos = [("Modalidades", "modalidades"), ("Outra atividade esportiva", "outra_modalidade"),
+              ("Pessoas atendidas hoje", "beneficiarios"),
+              ("Projetos esportivos/sociais dos últimos 3 anos", "projetos_3anos")]
+    valores = [(rot, str(linha.get(ch, "") or "").strip()) for rot, ch in campos]
+    if not any(v for _, v in valores):
+        return
+    with st.container(border=True):
+        st.markdown("**Experiência esportiva** · não entra na nota; apoio para a análise")
+        for rot, v in valores:
+            if v:
+                st.markdown(f"**{rot}:** {_md_seguro(v)}")

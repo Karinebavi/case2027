@@ -19,6 +19,8 @@ CAMPOS = [
     ("Identificação", "data_fundacao", "Data de fundação", True, ["fundação", "fundacao"]),
     ("Identificação", "uf", "Estado (UF)", True, ["estado"]),
     ("Identificação", "cidade", "Cidade", False, ["cidade"]),
+    # Código do envio no Wix: liga a inscrição aos documentos anexados nela mesma.
+    ("Identificação", "id_envio", "Código do envio no Wix", False, ["_submission_id"]),
     ("Identificação", "data_envio", "Data de envio da inscrição", False,
      ["data de envio", "carimbo de data", "submission", "timestamp", "data/hora"]),
     ("Identificação", "beneficiarios", "Número de beneficiários", False,
@@ -43,8 +45,9 @@ CAMPOS = [
     ("Eliminatórias (Sim/Não)", "modalidades", "Modalidades esportivas praticadas", False, ["modalidade"]),
 
     ("Perguntas de nota", "p18", "Elaboração — projetos que já escreveu", True,
-     ["escreveu para pedir", "elabor", "inscreveu algum projeto", "captar recurso"]),
-    ("Perguntas de nota", "p19", "Execução — projetos que já colocou em prática", True, ["colocou em prática", "execu"]),
+     ["escreveu para pedir", "inscreveu algum projeto", "captar recurso", "elabor"]),
+    ("Perguntas de nota", "p19", "Execução — projetos que já colocou em prática", True,
+     ["colocou em prática", "executou", "execu"]),
     ("Perguntas de nota", "p20_lie", "Situação na Lei de Incentivo ao Esporte (LIE)", False,
      ["lei de incentivo", "incentivo ao esporte", "(lie)", "lie"]),
     ("Perguntas de nota", "p21", "Equipe — nº de pessoas", True, ["pessoas atuam", "quantas pessoas", "colaboradores", "equipe"]),
@@ -62,6 +65,14 @@ CAMPOS = [
     ("Canais digitais", "instagram", "Instagram (link)", False, ["instagram"]),
     ("Canais digitais", "facebook", "Facebook (link)", False, ["facebook"]),
     ("Canais digitais", "outra_rede", "Outra rede social (link)", False, ["outra rede"]),
+
+    # Experiência esportiva — não entra na nota; aparece no ranking e na ficha.
+    # (modalidades e beneficiários já estão acima.) Ficam no fim para não tomar
+    # coluna de outro campo.
+    ("Experiência esportiva", "outra_modalidade", "Outra atividade esportiva", False,
+     ["outra atividade esportiva", "outra modalidade"]),
+    ("Experiência esportiva", "projetos_3anos", "Projetos esportivos/sociais dos últimos 3 anos", False,
+     ["liste os principais projetos", "nos últimos 3 anos"]),
 ]
 
 

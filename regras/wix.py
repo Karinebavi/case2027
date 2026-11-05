@@ -292,6 +292,8 @@ def _baixar(url):
 def _resolver_form_docs(c):
     if c["form_docs"]:
         return c["form_docs"]
+    if c["form_id"]:  # 2027: os documentos vêm anexados no próprio formulário de inscrição
+        return c["form_id"]
     forms = listar_formularios(c)
     alvo = (c["form_docs_nome"] or "documento").strip().lower()
     cand = [(fid, nome) for fid, nome in forms if alvo in (nome or "").lower()]
@@ -380,6 +382,26 @@ def buscar_documentos(form_docs_id=None, limite=None, baixar=True):
 _NOME_MIN_PALAVRAS, _NOME_MIN_LETRAS = 3, 12
 
 
+def envios_com_documentos():
+    """Envios com anexo, do formulário de documentos E do de inscrição (sem
+    repetir formulário nem envio). Em 2027 os anexos vêm na própria inscrição."""
+    c = _cfg()
+    formularios = []
+    for fid in (c["form_docs"], c["form_id"]):
+        if fid and fid not in formularios:
+            formularios.append(fid)
+    if not formularios:
+        formularios = [_resolver_form_docs(c)]
+    saida, vistos = [], set()
+    for fid in formularios:
+        envios, _ = buscar_documentos(form_docs_id=fid, baixar=False)
+        for e in envios:
+            if grupos_enviados(e) and e.get("_id") not in vistos:
+                vistos.add(e.get("_id"))
+                saida.append(e)
+    return saida
+
+
 def _parecido(a, b):
     """Semelhança (0 a 1) entre dois nomes já normalizados por _norm."""
     import difflib
@@ -437,11 +459,17 @@ def _mais_parecido(envios, alvo):
 
 def ligar(envios, entidades, minimo=NOME_MINIMO):
     """Liga várias entidades aos seus envios de documentos de uma vez.
-    entidades: [{chave, cnpj, emails, nome}]. Devolve {chave: (envio, como)}.
-    CNPJ e e-mail valem direto. Por nome, cada envio fica com UMA entidade só —
-    a de nome mais parecido — para o mesmo documento não aparecer em duas."""
+    entidades: [{chave, id_envio, cnpj, emails, nome}]. Devolve {chave: (envio, como)}.
+    Primeiro o próprio envio (documentos anexados na inscrição — ligação exata,
+    vale até com CNPJ digitado errado); depois CNPJ e e-mail. Por nome, cada envio
+    fica com UMA entidade só — a de nome mais parecido."""
     ligados, por_nome = {}, {}
+    por_id = {e["_id"]: e for e in envios if e.get("_id")}
     for ent in entidades:
+        envio = por_id.get(ent.get("id_envio") or "")
+        if envio is not None:
+            ligados[ent["chave"]] = (envio, "próprio envio da inscrição")
+            continue
         envio, como = localizar(envios, cnpj=ent.get("cnpj"), emails=ent.get("emails", ()),
                                 nome=ent.get("nome"), minimo=None)
         if envio:

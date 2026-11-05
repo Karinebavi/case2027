@@ -88,3 +88,30 @@ def test_canais_vem_da_pergunta_de_marcar_e_nao_do_campo_de_links():
         _inscricao("77888999000163", "Site próprio ,  Instagram"),
     )
     assert list(nota["b7"]) == [8, 4, 6]
+
+
+def test_ordem_das_colunas_do_wix_nao_troca_perguntas():
+    # O Wix entrega as colunas fora da ordem do formulário. "Execução" (executou)
+    # não pode pegar a pergunta da infraestrutura ("local para a execução das
+    # atividades") quando ela vem antes — os dois blocos sairiam errados.
+    rotulo_infra = "27. A entidade tem local para a execução das atividades esportivas e projetos sociais?"
+    inscricao = _inscricao("11222333000181", "  Instagram")
+    inscricao[rotulo_infra] = inscricao.pop(ROTULOS["p24"])
+    colunas = list(reversed(list(inscricao)))  # infraestrutura antes da execução
+    mapa, nota = _notas({k: inscricao[k] for k in colunas})
+    assert mapa["p19"] == ROTULOS["p19"]
+    assert mapa["p24"] == rotulo_infra
+    assert nota.iloc[0]["b6"] == 10 and nota.iloc[0]["b2"] == 10
+
+
+def test_experiencia_esportiva_e_guardada_sem_mexer_na_nota():
+    projetos = "29. Liste os principais projetos esportivos/sociais executados nos últimos 3 anos."
+    outra = "Qual outra atividade esportiva a entidade desenvolve?"
+    modalidades = "31. Quais modalidades esportivas a entidade já desenvolve na prática?"
+    base = _inscricao("11222333000181", "  Instagram")
+    extra = {**base, projetos: "Escolinha de futsal (2024)", outra: "Xadrez", modalidades: "Handebol"}
+    mapa, nota = _notas(extra)
+    assert (mapa["projetos_3anos"], mapa["outra_modalidade"], mapa["modalidades"]) == (projetos, outra, modalidades)
+    assert mapa["p19"] == ROTULOS["p19"]  # "executados" (29) não toma o lugar da execução (22)
+    _, nota_sem = _notas(base)
+    assert nota.iloc[0]["Nota"] == nota_sem.iloc[0]["Nota"]  # não entra na nota
