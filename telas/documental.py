@@ -90,13 +90,15 @@ def _salvar_e_recarregar(msg=None):
 
 @st.cache_data(ttl=300, show_spinner="Lendo os envios de documentos no Wix…")
 def _envios_wix():
-    """Envios do formulário de documentos (só nomes e links, sem baixar)."""
+    """Envios com documentos (só nomes e links, sem baixar). Procura no formulário
+    de documentos E no próprio formulário de inscrição (em 2027 os anexos vêm na
+    inscrição) — assim funciona mesmo com o form_docs antigo nos Secrets."""
     try:
-        envios, _ = wix.buscar_documentos(baixar=False)
+        envios = wix.envios_com_documentos()
         return envios, ""
     except Exception as erro:
         print(f"[documental] Wix indisponível ({type(erro).__name__})")
-        return [], "Não consegui ler o formulário de documentos do Wix agora."
+        return [], "Não consegui ler os documentos no Wix agora."
 
 
 def _contatos(dados):

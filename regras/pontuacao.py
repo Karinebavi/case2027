@@ -151,6 +151,45 @@ def _digital(g):
     return b7, como, ", ".join(nome for nome, sim in tem.items() if sim) or "nenhum"
 
 
+# Rótulos curtos das respostas, para conferir na tabela do Resultado.
+CURTO = {
+    "Até R$ 25 mil": "até 25 mil", "De R$ 25 mil a R$ 50 mil": "25–50 mil",
+    "De R$ 51 mil a R$ 150 mil": "51–150 mil", "De R$ 151 mil a R$ 500 mil": "151–500 mil",
+    "Acima de R$ 500 mil": "acima de 500 mil",
+    "Não possui espaço próprio para gestão administrativa": "não possui",
+    "Utiliza espaço cedido por parceiros ou instituições": "cedido",
+    "Possui sede administrativa alugada": "alugada", "Possui sede administrativa própria": "própria",
+    "Não possui local para as atividades": "não possui",
+    "Utiliza instalações públicas ou cedidas por parceiros (praças, escolas, ginásios, etc.)": "público/cedido",
+    "Possui espaço esportivo alugado": "alugado", "Possui espaço esportivo próprio": "próprio",
+}
+_COM_TABELA = (2, 3, 4, 5)  # equipe, receita, infra adm., infra esp.: resposta fora da régua = 0
+
+
+def conferencia(dados, mapa):
+    """Conferência da nota na tabela do Resultado, numa passada só pela base:
+    CNPJ (dígitos) -> 7 textos "pontos · resposta", na ordem dos blocos. Usa a
+    MESMA conta da nota (_blocos_detalhe). Resposta preenchida que a régua não
+    reconhece vira "0 · não reconhecida: …" — é o que a conferência precisa achar."""
+    col = mapa.get("cnpj")
+    out = {}
+    for _, row in dados.iterrows():
+        def g(ch):  # usada só nesta volta do laço
+            c = mapa.get(ch)
+            return row.get(c, "") if c else ""  # noqa: B023
+        textos = []
+        for i, b in enumerate(_blocos_detalhe(g)):
+            resp = str(b["Resposta"]).strip()
+            if resp in ("", "—"):
+                textos.append(f"{b['Pontos']} · sem resposta")
+            elif i in _COM_TABELA and b["Pontos"] == 0:
+                textos.append(f"0 · não reconhecida: {resp[:40]}")
+            else:
+                textos.append(f"{b['Pontos']} · {CURTO.get(resp, resp)[:40]}")
+        out[_so_digitos(row.get(col, ""))] = textos
+    return out
+
+
 def detalhar(dados, mapa, cnpj):
     """Memória de cálculo detalhada de uma entidade (localizada pelo CNPJ)."""
     col = mapa.get("cnpj")

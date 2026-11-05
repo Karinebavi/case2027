@@ -12,7 +12,13 @@ import streamlit as st
 from telas import _calculo, _ui
 from regras import validacao, exportacao
 import tema
+from regras import pontuacao
 from regras.memoria import so_digitos
+
+
+@st.cache_data(show_spinner=False)
+def _conferencia(dados, mapa):
+    return pontuacao.conferencia(dados, mapa)
 
 SITUACOES = ["Classificada", "Fila de espera"]
 
@@ -74,9 +80,10 @@ def mostrar():
     busca = st.text_input("Buscar entidade", placeholder="digite parte do nome...")
     ver = st.radio("Ver", ["Todas", f"Só as {pool_size} da Fase 2", "Só as com atenção"],
                    horizontal=True, label_visibility="collapsed")
-    por_bloco = st.toggle("Ver pontos por bloco (como a nota foi formada)", value=True, key="ver_blocos")
-    experiencia = st.toggle("Ver experiência esportiva (modalidades e pessoas atendidas)", value=False,
-                            key="ver_experiencia")
+    por_bloco = st.toggle("Conferir os pontos: mostrar, em cada bloco, os pontos e o que a entidade respondeu",
+                          value=True, key="ver_blocos")
+    experiencia = st.toggle("Ver experiência esportiva (modalidades, pessoas atendidas e projetos)",
+                            value=False, key="ver_experiencia")
     with st.expander("Mais filtros (situação, região, cidade)"):
         fcol2, fcol3, fcol4 = st.columns(3)
         situacoes = fcol2.multiselect("Situação", SITUACOES, placeholder="Todas")
@@ -104,13 +111,19 @@ def mostrar():
     BLOCO_COL = {"b1": "Elaboração", "b2": "Execução", "b3": "Equipe", "b4": "Receita",
                  "b5": "Infra adm.", "b6": "Infra esp.", "b7": "Digital"}
     bloco_cols = list(BLOCO_COL) if por_bloco else []
+    dig = disp["CNPJ"].map(so_digitos)
+    if por_bloco:
+        # "pontos · resposta" — a mesma conta da nota, para conferir sem abrir a ficha
+        conf = _conferencia(dados, mapa)
+        for i, b in enumerate(BLOCO_COL):
+            disp[b] = dig.map(lambda d, i=i: conf[d][i] if d in conf else "")
     exp_cols = []
     if experiencia:
         exp = _experiencia(dados)
-        dig = disp["CNPJ"].map(so_digitos)
         disp["Modalidades"] = dig.map(lambda d: exp.get(d, {}).get("modalidades", ""))
         disp["Pessoas atendidas"] = dig.map(lambda d: exp.get(d, {}).get("beneficiarios", ""))
-        exp_cols = ["Modalidades", "Pessoas atendidas"]
+        disp["Projetos (3 anos)"] = dig.map(lambda d: exp.get(d, {}).get("projetos", ""))
+        exp_cols = ["Modalidades", "Pessoas atendidas", "Projetos (3 anos)"]
     colunas = (["Posição", "Entidade", "Cidade", "UF", "Nota"] + bloco_cols + exp_cols
                + ["Anos", "Fase 2", "Situação", "Motivo"])
     disp = disp[colunas].rename(columns={**BLOCO_COL, "Anos": "Tempo (anos)",
@@ -122,39 +135,44 @@ def mostrar():
     def _cor_pool(v):
         return f"background-color:{tema.LAVANDA};color:{tema.ROXO};font-weight:600" if v == "Sim" else ""
 
+    def _cor_conferencia(v):
+        # resposta que a régua não reconhece: vermelho, para conferir no formulário
+        cor = tema.COR_STATUS["vermelho"]
+        return f"background-color:{cor[0]};color:{cor[1]}" if str(v).startswith("0 · não reconhecida") else ""
+
     estilo = (
         disp.style
         .map(_cor_sit, subset=["Situação"])
         .map(_cor_pool, subset=["Fase 2"])
         .format({"Tempo (anos)": "{:.1f}"})
     )
+    blocos_vis = [c for c in BLOCO_COL.values() if c in disp.columns]
+    if blocos_vis:
+        estilo = estilo.map(_cor_conferencia, subset=blocos_vis)
     col_cfg = {
         "Posição": st.column_config.NumberColumn("Posição", width="small"),
         "Nota": st.column_config.ProgressColumn("Nota", min_value=0, max_value=70, format="%d"),
         "Fase 2": st.column_config.TextColumn("Fase 2", width="small"),
         "Modalidades": st.column_config.TextColumn("Modalidades", width="large"),
         "Pessoas atendidas": st.column_config.TextColumn("Pessoas atendidas", width="small"),
+        "Projetos (3 anos)": st.column_config.TextColumn("Projetos (3 anos)", width="large"),
         "Atenção": st.column_config.TextColumn("Atenção", width="large",
                                                help="Pendência sinalizada (não exclui). Confirmada na Fase 2."),
     }
-    for rot in BLOCO_COL.values():
-        if rot in disp.columns:
-            col_cfg[rot] = st.column_config.NumberColumn(rot, width="small", format="%d",
-                                                         help="Pontos deste bloco (máx. 10)")
+    for rot in blocos_vis:
+        col_cfg[rot] = st.column_config.TextColumn(
+            rot, width="medium", help="Pontos deste bloco (máx. 10) · o que a entidade respondeu")
     st.dataframe(estilo, width="stretch", hide_index=True, height=460, column_config=col_cfg)
 
-    # ----------------------- Ficha da entidade -----------------------
-    st.divider()
-    st.subheader("Ficha da entidade")
-    st.caption("Escolha uma entidade para ver a nota por bloco e o comparativo com a média.")
-    nomes = list(vista.sort_values("Nota", ascending=False)["Entidade"])
-    escolha_ficha = st.selectbox("Abrir ficha de:", ["—"] + nomes, key="ficha_sel")
-    if escolha_ficha and escolha_ficha != "—":
-        _ui.ficha(f, escolha_ficha, dados, mapa)
+    st.caption("Em vermelho: resposta que a régua não reconhece (pontuou 0) — confira a opção no formulário do Wix. "
+               "Régua completa em docs/REGUA-DE-PONTUACAO.md.")
 
-    # ----------------------- Detalhes -----------------------
-    st.divider()
-    st.caption("A memória de cálculo (pontos de cada bloco) está na ficha acima e na planilha exportada.")
+    # ----------------------- Ficha (opcional) -----------------------
+    with st.expander("Ficha de uma entidade (gráfico e comparação com a média) — opcional"):
+        nomes = list(vista.sort_values("Nota", ascending=False)["Entidade"])
+        escolha_ficha = st.selectbox("Abrir ficha de:", ["—"] + nomes, key="ficha_sel")
+        if escolha_ficha and escolha_ficha != "—":
+            _ui.ficha(f, escolha_ficha, dados, mapa)
 
     v = validacao.validar(dados, mapa)
     with st.expander(f"Pendências na base ({len(v['pendencias'])})"):
@@ -179,5 +197,6 @@ def _experiencia(dados):
         outra = str(row.get("outra_modalidade", "") or "").strip()
         if outra:
             mods.append(outra)
-        out[d] = {"modalidades": ", ".join(mods), "beneficiarios": str(row.get("beneficiarios", "") or "").strip()}
+        out[d] = {"modalidades": ", ".join(mods), "beneficiarios": str(row.get("beneficiarios", "") or "").strip(),
+                  "projetos": " ".join(str(row.get("projetos_3anos", "") or "").split())}
     return out

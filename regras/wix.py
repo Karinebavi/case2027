@@ -382,6 +382,26 @@ def buscar_documentos(form_docs_id=None, limite=None, baixar=True):
 _NOME_MIN_PALAVRAS, _NOME_MIN_LETRAS = 3, 12
 
 
+def envios_com_documentos():
+    """Envios com anexo, do formulário de documentos E do de inscrição (sem
+    repetir formulário nem envio). Em 2027 os anexos vêm na própria inscrição."""
+    c = _cfg()
+    formularios = []
+    for fid in (c["form_docs"], c["form_id"]):
+        if fid and fid not in formularios:
+            formularios.append(fid)
+    if not formularios:
+        formularios = [_resolver_form_docs(c)]
+    saida, vistos = [], set()
+    for fid in formularios:
+        envios, _ = buscar_documentos(form_docs_id=fid, baixar=False)
+        for e in envios:
+            if grupos_enviados(e) and e.get("_id") not in vistos:
+                vistos.add(e.get("_id"))
+                saida.append(e)
+    return saida
+
+
 def _parecido(a, b):
     """Semelhança (0 a 1) entre dois nomes já normalizados por _norm."""
     import difflib

@@ -216,7 +216,7 @@ def _painel_base(base):
         cols = [c for c in ["nome_entidade", "cnpj", "cidade", "uf", "data_envio", "data_fundacao"]
                 if c in base.columns]
         st.dataframe(
-            base[cols].rename(columns={
+            _para_exibir(base[cols]).rename(columns={
                 "nome_entidade": "Entidade", "cnpj": "CNPJ", "cidade": "Cidade",
                 "uf": "UF", "data_envio": "Data de envio", "data_fundacao": "Fundação",
             }),
@@ -245,3 +245,26 @@ def _painel_base(base):
         if z2.button("Cancelar"):
             st.session_state["_confirmar_zerar"] = False
             st.rerun()
+
+
+def _para_exibir(tabela):
+    """Datas e estado legíveis na tela (a base guarda o formato técnico, que é o que
+    o sistema usa para achar a inscrição mais recente)."""
+    from regras.pontuacao import parse_data
+    t = tabela.copy()
+    if "data_envio" in t.columns:
+        def _envio(v):
+            s = str(v or "").strip()
+            # só a data técnica do Wix (2026-11-05T19:29:29Z) tem hora; o resto é dd/mm/aaaa
+            quando = pd.to_datetime(s, utc=True, errors="coerce") if re.match(r"\d{4}-\d{2}-\d{2}T", s) else pd.NaT
+            if pd.isna(quando):
+                d = parse_data(v)
+                return d.strftime("%d/%m/%Y") if d else str(v or "")
+            return quando.tz_convert("America/Sao_Paulo").strftime("%d/%m/%Y %H:%M")
+        t["data_envio"] = t["data_envio"].map(_envio)
+    if "data_fundacao" in t.columns:
+        t["data_fundacao"] = t["data_fundacao"].map(
+            lambda v: parse_data(v).strftime("%d/%m/%Y") if parse_data(v) else str(v or ""))
+    if "uf" in t.columns:
+        t["uf"] = t["uf"].astype(str).str.strip().str.upper()
+    return t
