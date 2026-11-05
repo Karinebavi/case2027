@@ -12,7 +12,7 @@ import hashlib
 from leitura import cnpj_online as _cnpj
 from leitura import parecer as _parecer
 from leitura import texto as _texto
-from leitura.campos import so_digitos
+from leitura.campos import _valida_cnpj, so_digitos
 from leitura.documento import Documento
 
 try:
@@ -61,8 +61,15 @@ def analisar(arquivos, cnpj_inscricao=None, nome_inscricao=None, progresso=None,
     if progresso:
         progresso("Consultando o CNPJ e conferindo as regras…", 0.97)
     cnpj = so_digitos(cnpj_inscricao) or None
+    invalido = bool(cnpj) and (len(cnpj) != 14 or _valida_cnpj(cnpj) is False)  # None = sem como validar
+    if invalido:
+        # CNPJ digitado errado na inscrição: comparar os documentos com ele daria
+        # tudo como "de outra entidade". Usa o CNPJ do próprio Cartão CNPJ (o
+        # parecer acha sozinho) — inclusive para consultar a Receita.
+        cnpj = so_digitos(_parecer.montar(docs, None, nome_inscricao, data_ref=data_ref).get("cnpj")) or None
     api = _cnpj.consultar(cnpj) if cnpj else None
     p = _parecer.montar(docs, cnpj, nome_inscricao, data_ref=data_ref, api=api)
+    p["cnpj_inscricao_invalido"] = invalido
     p["ocr_disponivel"] = _texto.ocr_disponivel()
     p["sem_texto"] = [d.arquivo for d in docs if d.sem_texto]
     return p

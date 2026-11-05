@@ -156,3 +156,23 @@ def test_documento_anexado_na_propria_inscricao_liga_pelo_envio():
     ligados = wix.ligar(envios, [{"chave": "x", "id_envio": "envio-abc", "cnpj": "99999999999999",
                                    "nome": "Outro Nome Completamente Diferente"}])
     assert ligados["x"] == (envios[0], "próprio envio da inscrição")
+
+
+def test_cnpj_digitado_errado_na_inscricao_nao_descarta_os_documentos():
+    # Com o CNPJ da inscrição inválido, os documentos eram dados como "de outra
+    # entidade" e tudo virava "falta". Agora vale o CNPJ do próprio cartão.
+    certo = resumo.compacto(conferencia.analisar(_exemplos(), data_ref=REF), ref=REF)
+    errado = resumo.compacto(conferencia.analisar(_exemplos(), cnpj_inscricao="11111111111111",
+                                                  data_ref=REF), ref=REF)
+    assert errado["estatuto"]["curto"] == certo["estatuto"]["curto"]
+    assert errado["ata"]["cor"] == certo["ata"]["cor"]
+    assert errado["cartao"]["curto"] == certo["cartao"]["curto"]
+    assert any("digitado errado" in texto for _cor, texto in errado["cartao"]["linhas"])
+
+
+def test_mesmo_arquivo_em_varios_campos_e_avisado():
+    cartao = _exemplos()["cartao_cnpj"]
+    r = resumo.compacto(conferencia.analisar({"cartao_cnpj": cartao, "estatuto": cartao, "ata": cartao},
+                                             data_ref=REF), ref=REF)
+    assert r["estatuto"]["curto"] == "repetido" and r["ata"]["curto"] == "repetido"
+    assert "mesmo arquivo" in r["ata"]["linhas"][0][1]

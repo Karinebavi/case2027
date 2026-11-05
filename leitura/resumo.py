@@ -36,8 +36,20 @@ def _curto(texto, n=110):
     return texto if len(texto) <= n else texto[:n].rstrip() + "…"
 
 
-def _cartao(sug, cart, ref):
+def _repetido(recebidos, tipo, titulo):
+    """O arquivo deste campo é igual a outro já enviado (mesmo PDF em vários campos)."""
+    if any(tipo in (d.get("campo"), d.get("doc_type")) and d.get("status") == "duplicado" for d in recebidos):
+        return {"cor": "cinza", "curto": "repetido",
+                "linhas": [["cinza", f"O arquivo enviado como {titulo} é igual a outro já enviado "
+                                     "(mesmo arquivo em mais de um campo) — peça o documento certo"]]}
+    return None
+
+
+def _cartao(sug, cart, ref, recebidos=(), cnpj_digitado_errado=False):
     if not cart:
+        if any(d.get("doc_type") == "cartao_cnpj" and d.get("status") == "outra_entidade" for d in recebidos):
+            return {"cor": "vermelho", "curto": "de outra entidade",
+                    "linhas": [["vermelho", "O cartão CNPJ enviado é de outra entidade (CNPJ diferente)"]]}
         return {"cor": "cinza", "curto": "falta", "linhas": [["cinza", "Cartão CNPJ não recebido"]]}
     ano = sug.get("cnpj_1ano") or {}
     c1 = ano.get("cor") or "amarelo"
@@ -61,7 +73,11 @@ def _cartao(sug, cart, ref):
     else:
         l2 = ["verde", "Comprovante oficial da Receita"]
     curto = _idade(ab, ref) if ab else ("ok" if c1 == "verde" else "conferir")
-    return {"cor": _pior(l1[0], l2[0]), "curto": curto, "linhas": [l1, l2]}
+    linhas = [l1, l2]
+    if cnpj_digitado_errado:
+        linhas.append(["amarelo", "O CNPJ foi digitado errado na inscrição — conferido pelo do cartão; "
+                                  "peça a correção à entidade"])
+    return {"cor": _pior(*(c for c, _ in linhas)), "curto": curto, "linhas": linhas}
 
 
 def _estatuto(sug, est, doc_est, recebidos):
@@ -70,7 +86,8 @@ def _estatuto(sug, est, doc_est, recebidos):
         if alheio:
             return {"cor": "vermelho", "curto": "de outra entidade",
                     "linhas": [["vermelho", "O estatuto enviado é de outra entidade"]]}
-        return {"cor": "cinza", "curto": "falta", "linhas": [["cinza", "Estatuto não recebido"]]}
+        return _repetido(recebidos, "estatuto", "estatuto") or {
+            "cor": "cinza", "curto": "falta", "linhas": [["cinza", "Estatuto não recebido"]]}
 
     f = sug.get("est_finalidade") or {}
     fins = [x for x in est.get("finalidade", []) if x.get("em_fins")]
@@ -97,9 +114,10 @@ def _estatuto(sug, est, doc_est, recebidos):
     return saida
 
 
-def _ata(sug, ata, doc_ata, ref):
+def _ata(sug, ata, doc_ata, ref, recebidos=()):
     if not (doc_ata and ata):
-        return {"cor": "cinza", "curto": "falta", "linhas": [["cinza", "Ata da diretoria não recebida"]]}
+        return _repetido(recebidos, "ata", "ata") or {
+            "cor": "cinza", "curto": "falta", "linhas": [["cinza", "Ata da diretoria não recebida"]]}
     fim = max((m["fim"] for m in ata.get("mandatos", []) if m.get("fim")), default=None)
     c1 = (sug.get("ata_vigencia") or {}).get("cor") or "amarelo"
     if c1 == "verde":
@@ -124,9 +142,10 @@ def compacto(parecer, ref=None):
     pc = parecer["_pecas"]
     return {
         "resultado": parecer["resultado"],
-        "cartao": _cartao(sug, pc["cartao"], ref),
+        "cartao": _cartao(sug, pc["cartao"], ref, parecer.get("documentos_recebidos", []),
+                          parecer.get("cnpj_inscricao_invalido", False)),
         "estatuto": _estatuto(sug, pc["estatuto"], pc["doc_est"], parecer.get("documentos_recebidos", [])),
-        "ata": _ata(sug, pc["ata"], pc["doc_ata"], ref),
+        "ata": _ata(sug, pc["ata"], pc["doc_ata"], ref, parecer.get("documentos_recebidos", [])),
     }
 
 

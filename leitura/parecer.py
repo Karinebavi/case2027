@@ -191,7 +191,8 @@ def montar(documentos, cnpj_inscricao=None, nome_inscricao=None, data_ref=None, 
 
     # 5) documentos
     for d in documentos:
-        recebidos.append({"arquivo": d.arquivo, "doc_type": d.tipo, "tipo": TIPOS_LEGIVEIS.get(d.tipo, "—"),
+        recebidos.append({"arquivo": d.arquivo, "doc_type": d.tipo, "campo": d.grupo,
+                          "tipo": TIPOS_LEGIVEIS.get(d.tipo, "—"),
                           "status": d.status, "leitura": {"ocr": "OCR", "misto": "digital + OCR", "digital": "digital",
                                       "escaneada": "sem texto", "erro": "erro"}.get(
                               d.origem or "", "OCR" if d.lido_por_ocr else "digital"),
