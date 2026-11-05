@@ -34,7 +34,9 @@ CAMPOS = [
     ("Contato", "presidente", "Nome do presidente", False,
      ["nome completo do presidente", "presidente"]),
 
-    ("Eliminatórias (Sim/Não)", "estatuto", "Estatuto com finalidade esportiva", True, ["estatuto"]),
+    # "finalidade" e não "estatuto": no formulário de 2027 a pergunta 16 (estatuto e ata
+    # registrados em cartório) vem antes da 14 e também tem a palavra "estatuto".
+    ("Eliminatórias (Sim/Não)", "estatuto", "Estatuto com finalidade esportiva", True, ["finalidade"]),
     ("Eliminatórias (Sim/Não)", "computador", "Computador com câmera e microfone", True, ["computador", "câmera", "camera"]),
     ("Eliminatórias (Sim/Não)", "internet", "Internet para as reuniões", True, ["internet"]),
     ("Eliminatórias (Sim/Não)", "disponibilidade", "Disponibilidade de 2h por semana (10 meses)", True, ["disponibilidade", "1h30", "2h por semana", "2h semanais"]),
