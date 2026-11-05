@@ -207,7 +207,9 @@ def mostrar():
     contatos = _contatos(dados)
     # Liga os envios de documentos considerando a base inteira (não só o pool):
     # um envio vai para a entidade de nome mais parecido, esteja ela no pool ou não.
-    ligacoes = wix.ligar(envios, [{"chave": d, "cnpj": d, "emails": contatos.get(d, []), "nome": n}
+    ids = {so_digitos(c): str(i or "") for c, i in zip(dados.get("cnpj", []), dados.get("id_envio", []))}
+    ligacoes = wix.ligar(envios, [{"chave": d, "id_envio": ids.get(d, ""), "cnpj": d,
+                                   "emails": contatos.get(d, []), "nome": n}
                                   for d, n in zip(f["dig"], f["Entidade"])]) if envios else {}
     linhas = _situacao(pool, estado, ligacoes, wix_ok)
 
@@ -253,6 +255,12 @@ def _lote(linhas, estado):
                            icon=":material/play_arrow:", width="stretch")
     cols[1].caption("Busca os documentos no Wix e analisa uma por uma, sozinho (1 a 3 minutos cada). "
                     "Deixe esta tela aberta; o que já foi analisado fica salvo mesmo se fechar.")
+    # Automático: ao abrir a tela, analisa o que chegou de novo (uma vez por sessão,
+    # para não reiniciar sozinho se alguma leitura falhar). O botão continua valendo.
+    if not rodar and not st.session_state.get("_doc_lote_auto"):
+        st.session_state["_doc_lote_auto"] = True
+        st.info(f"Chegaram documentos de {len(pend)} entidade(s). Analisando automaticamente…")
+        rodar = True
     if not rodar:
         return
     barra = st.progress(0.0, text="Começando…")

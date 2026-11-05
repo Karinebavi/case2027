@@ -147,3 +147,12 @@ def test_documento_que_nao_veio_fica_cinza_e_entra_no_pedido():
     assert r["ata"]["cor"] == "cinza"
     pedido = contato.modelo_pedir_documentos("Entidade Exemplo", resumo.pendencias(r))
     assert "Ata" in pedido
+
+
+def test_documento_anexado_na_propria_inscricao_liga_pelo_envio():
+    # 2027: os anexos vêm no mesmo envio da inscrição — liga pelo código do envio,
+    # mesmo com CNPJ digitado errado e nome diferente do escrito no cartão.
+    envios = [_envio("Nome Qualquer", cnpj="11111111111111", _id="envio-abc")]
+    ligados = wix.ligar(envios, [{"chave": "x", "id_envio": "envio-abc", "cnpj": "99999999999999",
+                                   "nome": "Outro Nome Completamente Diferente"}])
+    assert ligados["x"] == (envios[0], "próprio envio da inscrição")

@@ -12,6 +12,7 @@ import streamlit as st
 from telas import _calculo, _ui
 from regras import validacao, exportacao
 import tema
+from regras.memoria import so_digitos
 
 SITUACOES = ["Classificada", "Fila de espera"]
 
@@ -74,6 +75,8 @@ def mostrar():
     ver = st.radio("Ver", ["Todas", f"Só as {pool_size} da Fase 2", "Só as com atenção"],
                    horizontal=True, label_visibility="collapsed")
     por_bloco = st.toggle("Ver pontos por bloco (como a nota foi formada)", value=True, key="ver_blocos")
+    experiencia = st.toggle("Ver experiência esportiva (modalidades e pessoas atendidas)", value=False,
+                            key="ver_experiencia")
     with st.expander("Mais filtros (situação, região, cidade)"):
         fcol2, fcol3, fcol4 = st.columns(3)
         situacoes = fcol2.multiselect("Situação", SITUACOES, placeholder="Todas")
@@ -101,7 +104,14 @@ def mostrar():
     BLOCO_COL = {"b1": "Elaboração", "b2": "Execução", "b3": "Equipe", "b4": "Receita",
                  "b5": "Infra adm.", "b6": "Infra esp.", "b7": "Digital"}
     bloco_cols = list(BLOCO_COL) if por_bloco else []
-    colunas = (["Posição", "Entidade", "Cidade", "UF", "Nota"] + bloco_cols
+    exp_cols = []
+    if experiencia:
+        exp = _experiencia(dados)
+        dig = disp["CNPJ"].map(so_digitos)
+        disp["Modalidades"] = dig.map(lambda d: exp.get(d, {}).get("modalidades", ""))
+        disp["Pessoas atendidas"] = dig.map(lambda d: exp.get(d, {}).get("beneficiarios", ""))
+        exp_cols = ["Modalidades", "Pessoas atendidas"]
+    colunas = (["Posição", "Entidade", "Cidade", "UF", "Nota"] + bloco_cols + exp_cols
                + ["Anos", "Fase 2", "Situação", "Motivo"])
     disp = disp[colunas].rename(columns={**BLOCO_COL, "Anos": "Tempo (anos)",
                                          "Motivo": "Atenção"})
@@ -122,6 +132,8 @@ def mostrar():
         "Posição": st.column_config.NumberColumn("Posição", width="small"),
         "Nota": st.column_config.ProgressColumn("Nota", min_value=0, max_value=70, format="%d"),
         "Fase 2": st.column_config.TextColumn("Fase 2", width="small"),
+        "Modalidades": st.column_config.TextColumn("Modalidades", width="large"),
+        "Pessoas atendidas": st.column_config.TextColumn("Pessoas atendidas", width="small"),
         "Atenção": st.column_config.TextColumn("Atenção", width="large",
                                                help="Pendência sinalizada (não exclui). Confirmada na Fase 2."),
     }
@@ -154,3 +166,18 @@ def mostrar():
                 f"{v['branco']} com campo em branco."
             )
             st.dataframe(v["pendencias"], width="stretch", hide_index=True)
+
+
+def _experiencia(dados):
+    """CNPJ (dígitos) -> modalidades (com a 'outra atividade') e pessoas atendidas."""
+    out = {}
+    for _, row in dados.iterrows():
+        d = so_digitos(row.get("cnpj", ""))
+        if not d:
+            continue
+        mods = [m.strip() for m in str(row.get("modalidades", "") or "").split(",") if m.strip()]
+        outra = str(row.get("outra_modalidade", "") or "").strip()
+        if outra:
+            mods.append(outra)
+        out[d] = {"modalidades": ", ".join(mods), "beneficiarios": str(row.get("beneficiarios", "") or "").strip()}
+    return out

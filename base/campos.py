@@ -19,6 +19,8 @@ CAMPOS = [
     ("Identificação", "data_fundacao", "Data de fundação", True, ["fundação", "fundacao"]),
     ("Identificação", "uf", "Estado (UF)", True, ["estado"]),
     ("Identificação", "cidade", "Cidade", False, ["cidade"]),
+    # Código do envio no Wix: liga a inscrição aos documentos anexados nela mesma.
+    ("Identificação", "id_envio", "Código do envio no Wix", False, ["_submission_id"]),
     ("Identificação", "data_envio", "Data de envio da inscrição", False,
      ["data de envio", "carimbo de data", "submission", "timestamp", "data/hora"]),
     ("Identificação", "beneficiarios", "Número de beneficiários", False,
@@ -63,6 +65,14 @@ CAMPOS = [
     ("Canais digitais", "instagram", "Instagram (link)", False, ["instagram"]),
     ("Canais digitais", "facebook", "Facebook (link)", False, ["facebook"]),
     ("Canais digitais", "outra_rede", "Outra rede social (link)", False, ["outra rede"]),
+
+    # Experiência esportiva — não entra na nota; aparece no ranking e na ficha.
+    # (modalidades e beneficiários já estão acima.) Ficam no fim para não tomar
+    # coluna de outro campo.
+    ("Experiência esportiva", "outra_modalidade", "Outra atividade esportiva", False,
+     ["outra atividade esportiva", "outra modalidade"]),
+    ("Experiência esportiva", "projetos_3anos", "Projetos esportivos/sociais dos últimos 3 anos", False,
+     ["liste os principais projetos", "nos últimos 3 anos"]),
 ]
 
 

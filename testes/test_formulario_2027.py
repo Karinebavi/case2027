@@ -102,3 +102,16 @@ def test_ordem_das_colunas_do_wix_nao_troca_perguntas():
     assert mapa["p19"] == ROTULOS["p19"]
     assert mapa["p24"] == rotulo_infra
     assert nota.iloc[0]["b6"] == 10 and nota.iloc[0]["b2"] == 10
+
+
+def test_experiencia_esportiva_e_guardada_sem_mexer_na_nota():
+    projetos = "29. Liste os principais projetos esportivos/sociais executados nos últimos 3 anos."
+    outra = "Qual outra atividade esportiva a entidade desenvolve?"
+    modalidades = "31. Quais modalidades esportivas a entidade já desenvolve na prática?"
+    base = _inscricao("11222333000181", "  Instagram")
+    extra = {**base, projetos: "Escolinha de futsal (2024)", outra: "Xadrez", modalidades: "Handebol"}
+    mapa, nota = _notas(extra)
+    assert (mapa["projetos_3anos"], mapa["outra_modalidade"], mapa["modalidades"]) == (projetos, outra, modalidades)
+    assert mapa["p19"] == ROTULOS["p19"]  # "executados" (29) não toma o lugar da execução (22)
+    _, nota_sem = _notas(base)
+    assert nota.iloc[0]["Nota"] == nota_sem.iloc[0]["Nota"]  # não entra na nota
