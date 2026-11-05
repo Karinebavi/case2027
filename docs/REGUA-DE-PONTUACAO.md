@@ -1,4 +1,10 @@
-# Régua de pontuação — CASE 2027 (Etapa 1)
+# Régua de pontuação em uso no sistema — CASE 2027 (Etapa 1)
+
+> **Em decisão (05/11/2026):** esta é a régua que o sistema aplica hoje. O
+> `Formulario_CASE_2027_Etapa1_FINAL.docx` traz valores diferentes em 4 blocos
+> (receita 26–100 mil = 10; infraestruturas cedidas = 9; digital: nenhum 8, só site 5,
+> site e redes 4) e pontua a pergunta opcional da LIE (sem projeto 10, SLI 8,
+> em captação 3, já executou 2). Falta a coordenação definir qual vale.
 
 **Total: 70 pontos** — 7 blocos, cada um vale **até 10**.
 A nota máxima fica no perfil **intermediário** de cada bloco (curva assimétrica):
