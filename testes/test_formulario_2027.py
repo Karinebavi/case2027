@@ -88,3 +88,17 @@ def test_canais_vem_da_pergunta_de_marcar_e_nao_do_campo_de_links():
         _inscricao("77888999000163", "Site próprio ,  Instagram"),
     )
     assert list(nota["b7"]) == [8, 4, 6]
+
+
+def test_ordem_das_colunas_do_wix_nao_troca_perguntas():
+    # O Wix entrega as colunas fora da ordem do formulário. "Execução" (executou)
+    # não pode pegar a pergunta da infraestrutura ("local para a execução das
+    # atividades") quando ela vem antes — os dois blocos sairiam errados.
+    rotulo_infra = "27. A entidade tem local para a execução das atividades esportivas e projetos sociais?"
+    inscricao = _inscricao("11222333000181", "  Instagram")
+    inscricao[rotulo_infra] = inscricao.pop(ROTULOS["p24"])
+    colunas = list(reversed(list(inscricao)))  # infraestrutura antes da execução
+    mapa, nota = _notas({k: inscricao[k] for k in colunas})
+    assert mapa["p19"] == ROTULOS["p19"]
+    assert mapa["p24"] == rotulo_infra
+    assert nota.iloc[0]["b6"] == 10 and nota.iloc[0]["b2"] == 10

@@ -43,8 +43,9 @@ CAMPOS = [
     ("Eliminatórias (Sim/Não)", "modalidades", "Modalidades esportivas praticadas", False, ["modalidade"]),
 
     ("Perguntas de nota", "p18", "Elaboração — projetos que já escreveu", True,
-     ["escreveu para pedir", "elabor", "inscreveu algum projeto", "captar recurso"]),
-    ("Perguntas de nota", "p19", "Execução — projetos que já colocou em prática", True, ["colocou em prática", "execu"]),
+     ["escreveu para pedir", "inscreveu algum projeto", "captar recurso", "elabor"]),
+    ("Perguntas de nota", "p19", "Execução — projetos que já colocou em prática", True,
+     ["colocou em prática", "executou", "execu"]),
     ("Perguntas de nota", "p20_lie", "Situação na Lei de Incentivo ao Esporte (LIE)", False,
      ["lei de incentivo", "incentivo ao esporte", "(lie)", "lie"]),
     ("Perguntas de nota", "p21", "Equipe — nº de pessoas", True, ["pessoas atuam", "quantas pessoas", "colaboradores", "equipe"]),
