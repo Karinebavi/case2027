@@ -382,12 +382,22 @@ def buscar_documentos(form_docs_id=None, limite=None, baixar=True):
 _NOME_MIN_PALAVRAS, _NOME_MIN_LETRAS = 3, 12
 
 
+def inscricao_mais_recente(c=None):
+    """Id do formulário de inscrição do ano mais recente (ex.: "CASE 2027 — Inscrição").
+    Usado quando o Secrets não define form_id."""
+    forms = [(fid, nome or "") for fid, nome in listar_formularios(c or _cfg()) if "inscri" in (nome or "").lower()]
+    if not forms:
+        return ""
+    ano = lambda nome: max((int(a) for a in re.findall(r"\b20\d{2}\b", nome)), default=0)  # noqa: E731
+    return max(forms, key=lambda f: (ano(f[1]), "nova" in f[1].lower()))[0]
+
+
 def envios_com_documentos():
     """Envios com anexo, do formulário de documentos E do de inscrição (sem
     repetir formulário nem envio). Em 2027 os anexos vêm na própria inscrição."""
     c = _cfg()
     formularios = []
-    for fid in (c["form_docs"], c["form_id"]):
+    for fid in (c["form_docs"], c["form_id"] or inscricao_mais_recente(c)):
         if fid and fid not in formularios:
             formularios.append(fid)
     if not formularios:
