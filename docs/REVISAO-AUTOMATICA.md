@@ -59,3 +59,25 @@ pytest -q
 bandit -r . -x ./testes -ll -q
 pip-audit -r requirements.txt
 ```
+
+## 3. Banco sempre acordado (grátis)
+
+O Supabase grátis **pausa o banco depois de 7 dias sem uso** — e o app para com
+"não consegui acessar o banco". A tarefa `.github/workflows/banco-acordado.yml`
+faz uma leitura mínima a cada 3 dias para isso não acontecer.
+
+### Para ligar (uma vez só)
+
+Em https://github.com/Karinebavi/case2027/settings/secrets/actions, clique em
+**New repository secret** duas vezes:
+
+| Name | Secret (copie do seu `.streamlit/secrets.toml`, sem as aspas) |
+|---|---|
+| `SUPABASE_URL` | o valor da linha `supabase_url` |
+| `SUPABASE_KEY` | o valor da linha `supabase_key` |
+
+Para testar na hora: aba **Actions** → **Manter o banco acordado** → **Run workflow**.
+Verde = o banco respondeu.
+
+Atenção: o GitHub desliga tarefas agendadas em repositórios **sem nenhuma mudança
+por 60 dias**. Se isso acontecer, ele avisa por e-mail; basta reativar na aba Actions.

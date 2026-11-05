@@ -52,9 +52,14 @@ def test_pergunta_que_nao_existe_no_formulario_pontua_zero(base):
     assert (nota[["b1", "b2", "b7"]] > 0).all().all()
 
 
-def test_faixas_de_equipe_de_2026_pontuam():
-    assert pontuacao.EQUIPE["Acima de 2 colaboradores"] == 10
-    assert pontuacao.EQUIPE["1 e 2 colaboradores"] == 8
+def test_regua_oficial_soma_70_pontos():
+    # Régua oficial (docs/REGUA-DE-PONTUACAO.md): 7 blocos de até 10 pontos.
+    maximos = [max(pontuacao.NOTA_MECANISMO.values())] * 2 + [
+        max(t.values()) for t in (pontuacao.EQUIPE, pontuacao.RECEITA, pontuacao.INFRA_ADMIN, pontuacao.INFRA_ESP)
+    ] + [10]
+    assert maximos == [10] * 7 and sum(maximos) == 70
+    # sem faixas do teste de 2026
+    assert set(pontuacao.EQUIPE) == {"1 ou 2", "3 a 5", "6 a 8", "9 a 12", "Mais de 12"}
 
 
 def test_estatuto_em_foto_e_incompleto_nao_falta_de_finalidade():

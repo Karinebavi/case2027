@@ -1,0 +1,37 @@
+# Mantém o banco (Supabase) acordado — o plano grátis pausa o projeto depois de
+# 7 dias sem uso, e aí o app para com "não consegui acessar o banco".
+# A cada 3 dias faz uma leitura mínima (1 linha). Grátis; não usa IA.
+# Precisa dos secrets SUPABASE_URL e SUPABASE_KEY no GitHub (os mesmos valores de
+# supabase_url e supabase_key do secrets.toml). Sem eles, só avisa e não falha.
+name: Manter o banco acordado
+
+on:
+  schedule:
+    - cron: "0 12 */3 * *"  # a cada 3 dias, 9h de Brasília
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  cutucar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Consultar o banco
+        env:
+          URL: ${{ secrets.SUPABASE_URL }}
+          KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then
+            echo "::notice::Cadastre SUPABASE_URL e SUPABASE_KEY nos Secrets do GitHub (docs/REVISAO-AUTOMATICA.md)."
+            exit 0
+          fi
+          base="${URL%/}"; base="${base%/rest/v1}"
+          extra=()
+          case "$KEY" in eyJ*) extra=(-H "Authorization: Bearer $KEY");; esac
+          codigo=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 \
+            -H "apikey: $KEY" "${extra[@]}" "$base/rest/v1/armazenamento?select=chave&limit=1")
+          echo "Resposta do banco: HTTP $codigo"
+          if [ "$codigo" != "200" ]; then
+            echo "::error::O banco não respondeu (HTTP $codigo). Se pausou, entre em supabase.com e clique em Restore."
+            exit 1
+          fi

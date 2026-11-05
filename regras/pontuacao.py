@@ -20,11 +20,7 @@ TOKENS = ["Esporte", "Cultura", "Infância", "Idoso", "PRONAS", "PRONON", "Emend
 NOTA_MECANISMO = {0: 5, 1: 10, 2: 3}  # 3 ou mais -> 2
 
 # Bloco 3 — Composição da equipe (alvo: 3 a 5)
-EQUIPE = {"1 ou 2": 8, "3 a 5": 10, "6 a 8": 4, "9 a 12": 3, "Mais de 12": 2,
-          # Faixas do formulário de 2026 (para o teste com inscrições do ano
-          # passado) — mesma curva: alvo 3-5 pessoas vale mais.
-          "1 e 2 colaboradores": 8, "Acima de 2 colaboradores": 10,
-          "Acima de 5 colaboradores": 4, "Acima de 10 colaboradores": 2}
+EQUIPE = {"1 ou 2": 8, "3 a 5": 10, "6 a 8": 4, "9 a 12": 3, "Mais de 12": 2}
 
 # Bloco 4 — Receita bruta anual (faixas do formulário FINAL; alvo: 51 a 150 mil).
 # Curva mantida do quadro original (5, 8, 10, 3, 2), remapeada para as novas faixas.
