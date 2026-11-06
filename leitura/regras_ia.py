@@ -113,6 +113,12 @@ def _documentos(L, insc):
         itens.append(_item("documentos", "Entidade dos documentos", ATENCAO,
                            "Nem todos os documentos parecem ser da mesma entidade. "
                            + (ent.get("observacao") or "")))
+    campo = {"cartao_cnpj": "Cartão CNPJ", "estatuto": "Estatuto", "ata": "Ata"}
+    for t in L.get("_triagem") or []:
+        if not t.get("passa"):
+            itens.append(_item("documentos", f"Arquivo fora do padrão ({campo.get(t.get('grupo'), t.get('grupo'))})",
+                               PENDENCIA, f"{t.get('nome')}: {t.get('motivo')}. Não foi lido — peça o documento "
+                               "certo.", _ev(t.get("nome"), 1)))
     if L.get("_fora"):
         itens.append(_item("documentos", "Arquivos que não abriram", PENDENCIA,
                            "Não foi possível ler: " + ", ".join(L["_fora"])

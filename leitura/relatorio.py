@@ -181,6 +181,14 @@ def montar(nome, leitura, info=None, cnpj=None, cidade_uf=None, data_inscricao=N
             f"<li>{e(TIPO_ATA.get(x.get('tipo'), x.get('tipo')))} de {e(x.get('data_assembleia'))} "
             f"<span class=mut>({e(x.get('arquivo'))})</span></li>" for x in outras) + "</ul>"
 
+    campo = {"cartao_cnpj": "Cartão CNPJ", "estatuto": "Estatuto", "ata": "Ata"}
+    como = {"texto": "pelo texto", "ia": "pela IA (1ª página)", "formato": "pelo formato",
+            "sem triagem": "sem triagem"}
+    tri = "".join(
+        f"<tr><td><span class='pill {'ok' if t.get('passa') else 'pend'}'>{'Seguiu' if t.get('passa') else 'Ficou fora'}"
+        f"</span></td><td><b>{e(campo.get(t.get('grupo'), t.get('grupo')))}</b> · <code>{e(t.get('nome'))}</code>"
+        f"{' · ' + e(t['paginas']) + ' p.' if t.get('paginas') else ''}<br>{e(t.get('motivo'))}</td>"
+        f"<td class=mut>{e(como.get(t.get('como'), t.get('como')))}</td></tr>" for t in (L.get("_triagem") or []))
     selos = "".join(f"<li>{e({'reconhecimento_firma': 'Reconhecimento de firma', 'autenticacao_copia': 'Autenticação de cópia'}.get(s.get('tipo'), 'Outro selo'))}"
                     f" <span class=mut>({e(_onde(s))})</span></li>" for s in (L.get("outros_selos") or []))
     obs = "".join(f"<li>{e(o)}</li>" for o in (L.get("observacoes") or []))
@@ -210,6 +218,8 @@ A decisão final é do mentor.</p>
 <h3>Cartão CNPJ</h3>{'<table class=dados>' + cartao + '</table>' if cartao else '<p class=mut>Não encontrado.</p>'}
 {estatuto or '<h3>Estatuto</h3><p class=mut>Não encontrado.</p>'}
 <h3>Ata da diretoria</h3>{ata or '<p class=mut>Nenhuma ata que eleja ou empossa a diretoria.</p>'}
+
+{'<h2>Triagem dos arquivos</h2><p class=mut>Antes da leitura completa, cada arquivo é conferido: o que foge do padrão (convite, pauta, contrato, planilha) não é lido.</p><table class=itens><tbody>' + tri + '</tbody></table>' if tri else ''}
 
 <h2>Como a IA separou as páginas</h2>
 <p class=mut>Cada página foi classificada pelo conteúdo, não pelo nome do arquivo.</p>

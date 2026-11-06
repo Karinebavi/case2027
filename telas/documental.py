@@ -629,8 +629,12 @@ def _acoes(r, reg, auto, emails, dig):
             st.caption("Sem e-mail na inscrição para pedir os documentos.")
     with b3:
         graves = [f"{titulo}: {t}" for titulo, cor, t in pontos if cor == "vermelho"]
-        motivo = st.text_input("Motivo da exclusão", value="; ".join(graves[:2]), key=f"motivo_{dig}",
+        # O campo começa VAZIO: o motivo é decisão do mentor, não da leitura automática
+        # (um motivo pré-escrito levou a uma exclusão errada em 05/11/2026).
+        motivo = st.text_input("Motivo da exclusão", key=f"motivo_{dig}",
                                placeholder="ex.: estatuto sem finalidade esportiva")
+        if graves:
+            st.caption("Pontos em vermelho da leitura (confira antes): " + "; ".join(graves[:2]))
         if st.button("Excluir", icon=":material/close:", key=f"excluir_{dig}", width="stretch"):
             if not motivo.strip():
                 st.warning("Informe o motivo para excluir.")
