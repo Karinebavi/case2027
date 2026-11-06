@@ -106,6 +106,10 @@ def acumular(base, novos):
     juntas = juntas.sort_values("_ordem", kind="stable")
     com_cnpj = juntas[juntas["_cnpj"] != ""].drop_duplicates("_cnpj", keep="last")
     sem_cnpj = juntas[juntas["_cnpj"] == ""]
+    if "id_envio" in sem_cnpj.columns:
+        # sem CNPJ, a mesma inscrição do Wix (mesmo id de envio) não pode entrar duas vezes
+        tem_id = sem_cnpj["id_envio"].astype(str).str.strip() != ""
+        sem_cnpj = pd.concat([sem_cnpj[tem_id].drop_duplicates("id_envio", keep="last"), sem_cnpj[~tem_id]])
     final = pd.concat([com_cnpj, sem_cnpj], ignore_index=True)
 
     final = final.drop(columns=[c for c in ["_cnpj", "_ordem"] if c in final.columns])

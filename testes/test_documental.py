@@ -156,3 +156,55 @@ def test_documento_anexado_na_propria_inscricao_liga_pelo_envio():
     ligados = wix.ligar(envios, [{"chave": "x", "id_envio": "envio-abc", "cnpj": "99999999999999",
                                    "nome": "Outro Nome Completamente Diferente"}])
     assert ligados["x"] == (envios[0], "próprio envio da inscrição")
+
+
+def test_cnpj_digitado_errado_na_inscricao_nao_descarta_os_documentos():
+    # Com o CNPJ da inscrição inválido, os documentos eram dados como "de outra
+    # entidade" e tudo virava "falta". Agora vale o CNPJ do próprio cartão.
+    certo = resumo.compacto(conferencia.analisar(_exemplos(), data_ref=REF), ref=REF)
+    errado = resumo.compacto(conferencia.analisar(_exemplos(), cnpj_inscricao="11111111111111",
+                                                  data_ref=REF), ref=REF)
+    assert errado["estatuto"]["curto"] == certo["estatuto"]["curto"]
+    assert errado["ata"]["cor"] == certo["ata"]["cor"]
+    assert errado["cartao"]["curto"] == certo["cartao"]["curto"]
+    assert any("digitado errado" in texto for _cor, texto in errado["cartao"]["linhas"])
+
+
+def test_mesmo_arquivo_em_varios_campos_e_avisado():
+    cartao = _exemplos()["cartao_cnpj"]
+    r = resumo.compacto(conferencia.analisar({"cartao_cnpj": cartao, "estatuto": cartao, "ata": cartao},
+                                             data_ref=REF), ref=REF)
+    assert r["estatuto"]["curto"] == "repetido" and r["ata"]["curto"] == "repetido"
+    assert "mesmo arquivo" in r["ata"]["linhas"][0][1]
+
+
+def _pdf_de_texto(texto):
+    """PDF digital de uma página com o texto dado (para simular outro documento)."""
+    import io
+
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    fig = plt.figure(figsize=(8.27, 11.69))
+    fig.text(0.08, 0.95, texto, va="top", wrap=True, fontsize=10)
+    buf = io.BytesIO()
+    fig.savefig(buf, format="pdf")
+    plt.close(fig)
+    return buf.getvalue()
+
+
+def test_arquivo_que_nao_e_o_documento_pedido_nao_vale():
+    convite = _pdf_de_texto("Convite. Temos a honra de convidar a sua organizacao para o evento de "
+                            "lancamento do programa, que acontecera no auditorio principal, com palestras, "
+                            "coffee break e apresentacao das proximas etapas. Contamos com a sua presenca. "
+                            "Confirme a participacao pelo telefone ou e-mail informados neste convite. " * 2)
+    word = b"PK\x03\x04" + b"conteudo de um arquivo do Word" * 20
+    arq = _exemplos()
+    arq["estatuto"] = [("Convite.pdf", convite)]
+    arq["ata"] = [("papel timbrado.docx", word)]
+    p = conferencia.analisar(arq, data_ref=REF)
+    r = resumo.compacto(p, ref=REF)
+    assert p["resultado"] == "NAO_APTO"
+    assert r["estatuto"]["curto"] == "não é estatuto" and r["estatuto"]["cor"] == "vermelho"
+    assert r["ata"]["curto"] == "não abriu"
+    assert r["cartao"]["cor"] != "cinza"  # o cartão continua valendo

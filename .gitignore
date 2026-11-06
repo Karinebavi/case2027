@@ -24,3 +24,6 @@ testes/casos_reais.py
 .agents/
 .claude/
 skills-lock.json
+
+# Gabarito com casos REAIS (CNPJs, documentos) — só nesta máquina, nunca no GitHub
+testes/gabarito/

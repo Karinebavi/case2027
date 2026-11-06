@@ -170,7 +170,7 @@ class Documento:
                 cont[" ".join(palavras)] += 1
         if not cont:
             return None
-        org = re.compile(r"ASSOCIA|ASSOC|INSTITUTO|CASA|APAE|CLUBE|FUNDA[ÇC]|LIGA|FEDERA|CENTRO|"
+        org = re.compile(r"ASSOCIA|ASSOC\b|INSTITUTO|CASA|APAE|CLUBE|FUNDA[ÇC]|LIGA|FEDERA|CENTRO|"
                          r"GR[ÊE]MIO|ESPORT|SOCIEDADE|PROJETO|ACADEMIA|UNI[ÃA]O|N[ÚU]CLEO")
         return max(cont.items(), key=lambda kv: (bool(org.search(kv[0])), kv[1], len(kv[0])))[0]
 
