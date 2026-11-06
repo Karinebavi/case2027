@@ -15,6 +15,7 @@ Fala com o Supabase pela API REST (só usa 'requests', sem biblioteca extra).
 A chave usada é a SECRETA (fica só no servidor, nos Secrets do Streamlit).
 """
 import json
+import os
 
 import requests
 import streamlit as st
@@ -26,12 +27,21 @@ class NuvemErro(Exception):
     """Falha ao falar com o banco. Nunca engolimos: perder dado é pior."""
 
 
+def _robo():
+    """Rodando fora da tela (o robô do GitHub que busca as inscrições)?"""
+    return os.environ.get("CASE_ROBO") == "1"
+
+
 def _config():
+    url = chave = ""
     try:
         url = str(st.secrets.get("supabase_url", "")).strip().rstrip("/")
         chave = str(st.secrets.get("supabase_key", "")).strip()
     except Exception:
-        return None
+        pass
+    # Fora do Streamlit (robô do GitHub): as mesmas chaves vêm do ambiente.
+    url = url or os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
+    chave = chave or os.environ.get("SUPABASE_KEY", "").strip()
     # aceita a URL copiada da tela "Data API" (termina em /rest/v1)
     for sufixo in ("/rest/v1", "/rest"):
         if url.endswith(sufixo):
@@ -73,6 +83,8 @@ def _checar(resp, oque):
 
 def quem() -> str:
     """E-mail de quem está usando (quando o app é privado/login Google)."""
+    if _robo():
+        return "robô (atualização automática do Wix)"
     for nome in ("user", "experimental_user"):
         try:
             u = getattr(st, nome)
@@ -151,7 +163,10 @@ def registrar(acao, detalhe=None):
                           timeout=TIMEOUT)
         _checar(r, "auditoria")
     except Exception as erro:  # auditoria não pode derrubar a tela
-        st.toast(f"Aviso: não consegui registrar no histórico ({erro})")
+        if _robo():
+            print(f"[nuvem] auditoria falhou ({type(erro).__name__})")
+        else:
+            st.toast(f"Aviso: não consegui registrar no histórico ({erro})")
 
 
 def historico(limite=200):
@@ -165,6 +180,8 @@ def historico(limite=200):
 def parar_com_erro(erro):
     """Mostra o problema e interrompe a tela (para nunca sobrescrever dado bom)."""
     print(f"[nuvem] parar_com_erro ({type(erro).__name__})")  # sem detalhe: pode citar processo/<CNPJ>
+    if _robo():
+        raise erro  # o robô para e avisa no GitHub, sem gravar nada
     st.error(
         "Não consegui acessar o banco de dados na nuvem, então parei para não "
         "perder nada. Tente recarregar a página em 1 minuto. Se o Supabase ficou "

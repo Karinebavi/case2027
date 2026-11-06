@@ -31,17 +31,17 @@ def mostrar():
         _carregar_base_para_sessao()
 
     st.title("1 · Importar")
-    _ui.cabecalho(1, "Suba o CSV das inscrições exportado do Wix. A cada arquivo, as inscrições "
-                     "somam à base — sem duplicar (o CNPJ é a chave).")
+    _ui.cabecalho(1, "As inscrições chegam sozinhas do Wix. Se precisar, suba um CSV ou busque de "
+                     "outro formulário — tudo soma à base sem duplicar (o CNPJ é a chave).")
 
-    st.caption("Suba o CSV exportado do Wix. As inscrições somam à base já existente.")
-    arquivo = st.file_uploader("Arquivo CSV das inscrições", type=["csv"], key="upload_csv")
+    atualizacao_automatica()
 
-    if arquivo is not None:
-        _processar_upload(arquivo)
-
-    st.divider()
-    _sincronizar_wix()
+    with st.expander("Outras formas de trazer inscrições (CSV ou outro formulário)"):
+        arquivo = st.file_uploader("Arquivo CSV das inscrições", type=["csv"], key="upload_csv")
+        if arquivo is not None:
+            _processar_upload(arquivo)
+        st.divider()
+        _sincronizar_wix()
 
     st.divider()
     _painel_base(st.session_state["dados"])
@@ -154,13 +154,55 @@ def _wix_formularios():
     return sorted(forms, key=ordem)
 
 
-def _sincronizar_wix():
-    """Botão opcional: puxa as inscrições direto do Wix e soma à base."""
+def _quando(iso):
+    try:
+        d = pd.to_datetime(iso, utc=True).tz_convert("America/Sao_Paulo")
+        return d.strftime("%d/%m às %H:%M")
+    except Exception:
+        return "—"
+
+
+def atualizacao_automatica():
+    """Painel 'Inscrições do Wix': última atualização do robô + botão Atualizar agora."""
+    from regras import atualizacao
     if not wix.ativo():
-        st.caption(":material/sync: Sincronização com o Wix desligada — configure a seção [wix] "
-                   "no Secrets (api_key e site_id) para ativar.")
+        st.warning("A ligação com o Wix está desligada no sistema online: falta a seção [wix] nos "
+                   "Secrets. Sem ela, as inscrições não chegam sozinhas.", icon=":material/sync_disabled:")
         return
-    st.markdown("**Sincronizar com o Wix**")
+    ult = atualizacao.ultima()
+    with st.container(border=True):
+        c = st.columns([3, 1], vertical_alignment="center")
+        if ult and ult.get("ok"):
+            c[0].markdown(f"**Inscrições do Wix** · atualizadas em {_quando(ult.get('quando'))} "
+                          f"({ult.get('origem', 'robô')}): {ult.get('novas', 0)} nova(s), "
+                          f"{ult.get('no_wix', '—')} no formulário.")
+            c[0].caption("O robô confere o Wix sozinho de 2 em 2 horas. Use o botão para não esperar.")
+        elif ult:
+            c[0].error(f"A última atualização ({_quando(ult.get('quando'))}) falhou: {ult.get('erro')}.")
+        else:
+            c[0].markdown("**Inscrições do Wix** · o robô ainda não rodou. Use o botão para buscar agora.")
+        if c[1].button("Atualizar agora", type="primary", icon=":material/sync:", width="stretch",
+                       key="atualizar_agora"):
+            with st.spinner("Buscando inscrições novas no Wix…"):
+                r = atualizacao.atualizar(origem=nuvem.quem())
+            if r.get("ok"):
+                if r.get("novas") or r.get("atualizadas"):
+                    st.session_state["dados"] = base_dados.carregar()
+                    st.session_state["mapa"] = normalizacao.mapa_identidade()
+                    st.session_state["mapa_ok"] = len(st.session_state["dados"]) > 0
+                    st.session_state["novos_cnpjs"] = set(r.get("cnpjs_novos") or [])
+                    st.cache_data.clear()
+                st.toast(f"{r.get('novas', 0)} inscrição(ões) nova(s).")
+            else:
+                st.toast(f"Não consegui atualizar: {r.get('erro')}")
+            st.rerun()
+
+
+def _sincronizar_wix():
+    """Busca manual, escolhendo o formulário (ex.: o de outro ano, para teste)."""
+    if not wix.ativo():
+        return
+    st.markdown("**Buscar de outro formulário do Wix**")
     st.caption("Puxa as inscrições direto do formulário. Os documentos NÃO vêm por aqui — "
                "no formulário eles são enviados por um link à parte.")
 
