@@ -32,7 +32,8 @@ VISUAL = ["Rasuras em documentos registrados (REG-19)",
 BLOCOS = [("documentos", "Documentos recebidos"), ("habilitacao", "Habilitação da entidade"),
           ("registro", "Registro e diretoria"), ("representante", "Representante legal")]
 STATUS_DOC = {"usado": "usado", "superado": "superado", "duplicado": "duplicado",
-              "outra_entidade": "outra entidade", "irrelevante": "irrelevante", "apoio": "apoio"}
+              "outra_entidade": "outra entidade", "irrelevante": "irrelevante", "apoio": "apoio",
+              "nao_e_o_pedido": "não é o documento pedido", "ilegivel": "não foi possível ler"}
 
 
 def _identidade(doc, cnpj_esp, nomes_esp):
@@ -95,15 +96,33 @@ def montar(documentos, cnpj_inscricao=None, nome_inscricao=None, data_ref=None, 
     vistos = {}
     for d in documentos:
         tipo, _ = classificar(d) if not d.sem_texto else (d.grupo or None, None)
-        # Resgate: se a classificação por conteúdo não reconheceu o tipo
-        # ('irrelevante', comum em escaneado com OCR ruim), respeitar o campo
-        # onde o mentor subiu o PDF. Não atrapalha a separação de arquivos
-        # misturados, que depende da classificação quando ela acerta um tipo real.
-        d.tipo = tipo if tipo and tipo != "irrelevante" else (d.grupo or tipo)
+        if getattr(d, "origem", "") == "erro" and not d.texto.strip():
+            # Nem abriu (arquivo Word, corrompido, formato não aceito): não serve.
+            d.tipo, d.status = d.grupo or "irrelevante", "ilegivel"
+        elif tipo == "irrelevante" and d.grupo and len(d.texto.strip()) >= 300:
+            # Bem lido e NÃO parece o documento do campo: é outro arquivo (convite,
+            # papel timbrado...). Não vale como estatuto/ata/cartão.
+            d.tipo, d.status = d.grupo, "nao_e_o_pedido"
+        else:
+            # Resgate: escaneado com OCR ruim ('irrelevante' por pouco texto) —
+            # respeita o campo onde o arquivo foi enviado.
+            d.tipo = tipo if tipo and tipo != "irrelevante" else (d.grupo or tipo)
         d.hash = d.hash or hashlib.md5(d.texto.encode("utf-8"), usedforsecurity=False).hexdigest()
-        if d.hash in vistos and not d.sem_texto:
+        if d.status == "usado" and d.hash in vistos and not d.sem_texto:
             d.status = "duplicado"
         vistos.setdefault(d.hash, d)
+
+    for d in documentos:
+        rotulo = TIPOS_LEGIVEIS.get(d.grupo, "documento")
+        if d.status == "nao_e_o_pedido":
+            achados.append(R.achado("DOC-03", "documentos", "Arquivo não é o documento pedido", R.PENDENCIA,
+                                    f"{d.arquivo} foi enviado como {rotulo}, mas o conteúdo não é de {rotulo}.",
+                                    d.ev(0, 0, 200), f"Pedir o {rotulo} da entidade."))
+        elif d.status == "ilegivel":
+            achados.append(R.achado("DOC-04", "documentos", "Arquivo não pôde ser lido", R.PENDENCIA,
+                                    f"{d.arquivo} (enviado como {rotulo}) não abriu — formato não aceito "
+                                    "(ex.: Word) ou arquivo corrompido.", d.ev(0, 0, 0),
+                                    f"Pedir o {rotulo} em PDF ou foto legível."))
 
     # 2) identidade da entidade
     cartoes = [d for d in documentos if d.tipo == "cartao_cnpj" and d.status == "usado"]

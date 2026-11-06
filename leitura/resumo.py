@@ -12,6 +12,7 @@ só se escreve o texto. Sem dado pessoal: guarda datas, o artigo e um trecho
 curto do estatuto (documento público da entidade) — nunca nomes da diretoria.
 """
 import datetime as dt
+import re
 
 from leitura import parecer as P
 
@@ -36,12 +37,23 @@ def _curto(texto, n=110):
     return texto if len(texto) <= n else texto[:n].rstrip() + "…"
 
 
+_POR_QUE_NAO_VALE = {
+    "duplicado": ("repetido", "cinza", "O arquivo enviado como {t} é igual a outro já enviado "
+                                       "(mesmo arquivo em mais de um campo) — peça o documento certo"),
+    "nao_e_o_pedido": ("não é {t}", "vermelho", "O arquivo enviado como {t} não é {t} "
+                                                "(é outro documento) — peça o documento certo"),
+    "ilegivel": ("não abriu", "vermelho", "O arquivo enviado como {t} não pôde ser lido "
+                                          "(Word ou arquivo corrompido) — peça em PDF ou foto"),
+}
+
+
 def _repetido(recebidos, tipo, titulo):
-    """O arquivo deste campo é igual a outro já enviado (mesmo PDF em vários campos)."""
-    if any(tipo in (d.get("campo"), d.get("doc_type")) and d.get("status") == "duplicado" for d in recebidos):
-        return {"cor": "cinza", "curto": "repetido",
-                "linhas": [["cinza", f"O arquivo enviado como {titulo} é igual a outro já enviado "
-                                     "(mesmo arquivo em mais de um campo) — peça o documento certo"]]}
+    """Por que o arquivo deste campo não valeu: repetido, outro documento ou ilegível."""
+    for d in recebidos:
+        motivo = _POR_QUE_NAO_VALE.get(d.get("status"))
+        if motivo and tipo in (d.get("campo"), d.get("doc_type")):
+            curto, cor, texto = motivo
+            return {"cor": cor, "curto": curto.format(t=titulo), "linhas": [[cor, texto.format(t=titulo)]]}
     return None
 
 
@@ -50,7 +62,8 @@ def _cartao(sug, cart, ref, recebidos=(), cnpj_digitado_errado=False):
         if any(d.get("doc_type") == "cartao_cnpj" and d.get("status") == "outra_entidade" for d in recebidos):
             return {"cor": "vermelho", "curto": "de outra entidade",
                     "linhas": [["vermelho", "O cartão CNPJ enviado é de outra entidade (CNPJ diferente)"]]}
-        return {"cor": "cinza", "curto": "falta", "linhas": [["cinza", "Cartão CNPJ não recebido"]]}
+        return _repetido(recebidos, "cartao_cnpj", "cartão CNPJ") or {
+            "cor": "cinza", "curto": "falta", "linhas": [["cinza", "Cartão CNPJ não recebido"]]}
     ano = sug.get("cnpj_1ano") or {}
     c1 = ano.get("cor") or "amarelo"
     ab = cart.get("data_abertura")
@@ -74,6 +87,16 @@ def _cartao(sug, cart, ref, recebidos=(), cnpj_digitado_errado=False):
         l2 = ["verde", "Comprovante oficial da Receita"]
     curto = _idade(ab, ref) if ab else ("ok" if c1 == "verde" else "conferir")
     linhas = [l1, l2]
+    # Natureza jurídica pela tabela da Receita: 3xx = sem fins lucrativos (associação,
+    # fundação, OS, OSCIP...) — ok; 2xx = empresa; demais (órgão público etc.) = conferir.
+    nat = cart.get("natureza_juridica")
+    nome = str(cart.get("razao_social") or "").upper()
+    cod = str(nat[0]) if nat else ""
+    if cod.startswith("2") or (not cod and re.search(r"\bLTDA\b|\bEIRELI\b", nome)):
+        linhas.append(["vermelho", "É empresa, não entidade sem fins lucrativos: "
+                                   + (nat[1] if nat else "o nome indica Ltda") + " — confira se pode participar"])
+    elif cod and not cod.startswith("3"):
+        linhas.append(["amarelo", f"Natureza jurídica: {nat[1]} — confira se pode participar"])
     if cnpj_digitado_errado:
         linhas.append(["amarelo", "O CNPJ foi digitado errado na inscrição — conferido pelo do cartão; "
                                   "peça a correção à entidade"])

@@ -67,10 +67,10 @@ _DOCS = [("cartao", "Cartão CNPJ", ":material/badge:"),
 # Selo em palavra (não só cor — acessibilidade) e a cor do badge do Streamlit.
 _SELO = {"verde": ("Sim", "green"), "amarelo": ("Conferir", "orange"),
          "vermelho": ("Não", "red"), "cinza": ("Falta", "gray")}
-_SITUACAO_COR = {"Aprovada": "verde", "Pronta para aprovar": "verde", "Conferir": "amarelo",
-                 "Não atende": "vermelho", "Não analisada": "cinza", "Sem documentos": "vermelho"}
-_SITUACAO_POR_RESULTADO = {"APTO": "Pronta para aprovar", "APTO_COM_AJUSTES": "Conferir",
-                           "NAO_APTO": "Não atende"}
+_SITUACAO_COR = {"Aprovada": "verde", "Apto": "verde", "Apto com ajustes": "amarelo",
+                 "Não apto": "vermelho", "Não analisada": "cinza", "Sem documentos": "vermelho"}
+# Resultado do parecer, nas palavras da conferência (a decisão final é do mentor).
+_SITUACAO_POR_RESULTADO = {"APTO": "Apto", "APTO_COM_AJUSTES": "Apto com ajustes", "NAO_APTO": "Não apto"}
 
 
 def _md(texto):
@@ -146,7 +146,7 @@ def _situacao(pool, estado, ligacoes, wix_ok):
         if status == "aprovada":
             situacao = "Aprovada"
         elif auto:
-            situacao = _SITUACAO_POR_RESULTADO.get(auto.get("resultado"), "Conferir")
+            situacao = _SITUACAO_POR_RESULTADO.get(auto.get("resultado"), "Apto com ajustes")
         elif envio or not wix_ok:
             situacao = "Não analisada"
         else:

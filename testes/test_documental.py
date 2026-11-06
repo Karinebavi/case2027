@@ -176,3 +176,35 @@ def test_mesmo_arquivo_em_varios_campos_e_avisado():
                                              data_ref=REF), ref=REF)
     assert r["estatuto"]["curto"] == "repetido" and r["ata"]["curto"] == "repetido"
     assert "mesmo arquivo" in r["ata"]["linhas"][0][1]
+
+
+def _pdf_de_texto(texto):
+    """PDF digital de uma página com o texto dado (para simular outro documento)."""
+    import io
+
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    fig = plt.figure(figsize=(8.27, 11.69))
+    fig.text(0.08, 0.95, texto, va="top", wrap=True, fontsize=10)
+    buf = io.BytesIO()
+    fig.savefig(buf, format="pdf")
+    plt.close(fig)
+    return buf.getvalue()
+
+
+def test_arquivo_que_nao_e_o_documento_pedido_nao_vale():
+    convite = _pdf_de_texto("Convite. Temos a honra de convidar a sua organizacao para o evento de "
+                            "lancamento do programa, que acontecera no auditorio principal, com palestras, "
+                            "coffee break e apresentacao das proximas etapas. Contamos com a sua presenca. "
+                            "Confirme a participacao pelo telefone ou e-mail informados neste convite. " * 2)
+    word = b"PK\x03\x04" + b"conteudo de um arquivo do Word" * 20
+    arq = _exemplos()
+    arq["estatuto"] = [("Convite.pdf", convite)]
+    arq["ata"] = [("papel timbrado.docx", word)]
+    p = conferencia.analisar(arq, data_ref=REF)
+    r = resumo.compacto(p, ref=REF)
+    assert p["resultado"] == "NAO_APTO"
+    assert r["estatuto"]["curto"] == "não é estatuto" and r["estatuto"]["cor"] == "vermelho"
+    assert r["ata"]["curto"] == "não abriu"
+    assert r["cartao"]["cor"] != "cinza"  # o cartão continua valendo
