@@ -92,6 +92,13 @@ Inscrições (Wix)
     visualmente** (nunca Pendência). Cartório em cidade diferente da sede = Atenção.
 - **Gabarito:** casos reais conferidos pela Karine ficam em `testes/gabarito/`
   (**só no computador dela — fora do GitHub**) e servem para medir a leitura.
+- **CNPJ digitado errado (combinado em 06/11/2026):** a cada inscrição nova o sistema
+  confere o dígito verificador, o nome na Receita (consulta pública, só o número sai)
+  e o campo "Confirme o CNPJ". Quando há problema, **sugere** a correção com a prova
+  (cartão CNPJ lido pela IA > campo de confirmação > número a um dígito de distância
+  cujo nome na Receita bate > dois números colados) e **a equipe confirma** com um
+  clique no painel "CNPJs a conferir" (tela Inscrições). A entidade não é procurada.
+  O número original fica no histórico; a análise de documentos acompanha o CNPJ novo.
 - **Ligação com o Wix:** a entidade preenche a inscrição e, no fim, segue um link
   para o **formulário de documentos**. Esse formulário **precisa pedir o CNPJ** —
   é por ele que o sistema liga os documentos à inscrição certa (depois tenta o
