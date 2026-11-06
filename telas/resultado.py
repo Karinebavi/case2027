@@ -27,13 +27,12 @@ CORES_SITUACAO = {k: f"background-color:{bg};color:{fg}" for k, (bg, fg) in tema
 
 
 def mostrar():
-    st.title("2 · Resultado")
-    _ui.cabecalho(2, "Veja a pontuação de todas as organizações. As melhores (padrão 30) seguem "
-                     "para a Fase 2; defina as vagas e, se quiser, baixe a planilha.")
+    _ui.cabecalho(2, "Todas as organizações em ordem de nota. As mais bem colocadas seguem para a "
+                     "análise de documentos.")
 
     dados = st.session_state.get("dados")
     if dados is None or not st.session_state.get("mapa_ok"):
-        st.info("Importe um CSV na tela 1 · Importar para ver o resultado.")
+        st.info("Ainda não há inscrições. Elas chegam sozinhas do Wix na etapa Inscrições.")
         return
 
     mapa = st.session_state["mapa"]
@@ -48,63 +47,57 @@ def mostrar():
     total = len(f)
     no_pool = int(f["em_pool"].sum())
     com_atencao = int(f["Motivo"].fillna("").str.strip().ne("").sum())
-    c = st.columns(4)
+    c = st.columns(3)
     c[0].metric("Inscrições", total)
-    c[1].metric("Com atenção (pendência)", com_atencao,
-                help="Entram no ranking normalmente — o selo só avisa o mentor. Ninguém é excluído na Fase 1.")
-    c[2].metric(f"Vão à Fase 2 (as {pool_size} melhores)", no_pool)
-    c[3].metric("Vagas finais", vagas)
-
-    ca, cb, cc = st.columns([1, 1, 2], vertical_alignment="bottom")
-    ca.number_input("Vagas finais", min_value=1, step=1, key="vagas",
-                    help="Meta ao final de todo o processo.")
-    cb.number_input("Quantas vão à Fase 2 (documental)", min_value=1, step=1, key="pool_fase2",
-                    help="As melhores colocadas entram na análise documental. As demais ficam na fila (repescagem automática).")
-    with cc:
-        st.download_button(
-            "Baixar planilha de pontuação (Excel)",
-            exportacao.montar_planilha(f, vagas),
-            "pontuacao_case2027.xlsx",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            width="stretch",
-        )
-        st.caption("Todas as organizações, com as vagas em destaque e a coluna 'Interesse do patrocinador' para a aba Análises.")
+    c[1].metric("Na Fase 2 (documentos)", no_pool,
+                help=(f"As {pool_size} mais bem colocadas vão à Fase 2."
+                      + (f" Por enquanto há só {total} inscrições." if total < pool_size else "")))
+    c[2].metric("Com atenção", com_atencao,
+                help="Entram no ranking normalmente — o selo só avisa o mentor. Ninguém é excluído aqui.")
 
     # ----------------------- Ranking -----------------------
-    st.subheader("Ranking")
-    st.caption(
-        f"Ordenadas por nota. As **{pool_size}** melhores (coluna **Fase 2 = Sim**, em azul) vão à documental; "
-        "as demais ficam na fila. A coluna **Atenção** sinaliza pendências — ninguém é excluído aqui."
-    )
-
-    busca = st.text_input("Buscar entidade", placeholder="digite parte do nome...")
-    ver = st.radio("Ver", ["Todas", f"Só as {pool_size} da Fase 2", "Só as com atenção"],
-                   horizontal=True, label_visibility="collapsed")
-    por_bloco = st.toggle("Conferir os pontos: mostrar, em cada bloco, os pontos e o que a entidade respondeu",
-                          value=True, key="ver_blocos")
-    experiencia = st.toggle("Ver experiência esportiva (modalidades, pessoas atendidas e projetos)",
-                            value=False, key="ver_experiencia")
-    with st.expander("Mais filtros (situação, região, cidade)"):
-        fcol2, fcol3, fcol4 = st.columns(3)
-        situacoes = fcol2.multiselect("Situação", SITUACOES, placeholder="Todas")
-        regioes = fcol3.multiselect("Região", sorted(r for r in f["Região"].unique() if r), placeholder="Todas")
-        cidades = fcol4.multiselect("Cidade", sorted(c for c in f["Cidade"].unique() if c), placeholder="Todas")
+    with st.container(horizontal=True, vertical_alignment="bottom", gap="small"):
+        busca = st.text_input("Buscar entidade", placeholder="digite parte do nome", width=280,
+                              icon=":material/search:")
+        ver = st.segmented_control("Ver", ["Todas", "Fase 2", "Com atenção"], default="Todas",
+                                   key="ranking_ver") or "Todas"
+        mostrar_col = st.pills("Mostrar também", ["Pontos por bloco", "Experiência esportiva"],
+                               selection_mode="multi", key="ranking_colunas")
+        with st.popover("Filtros", icon=":material/filter_list:"):
+            situacoes = st.multiselect("Situação", SITUACOES, placeholder="Todas")
+            regioes = st.multiselect("Região", sorted(r for r in f["Região"].unique() if r), placeholder="Todas")
+            cidades = st.multiselect("Cidade", sorted(c for c in f["Cidade"].unique() if c), placeholder="Todas")
+        with st.popover("Ajustar corte", icon=":material/tune:"):
+            st.number_input("Vagas finais", min_value=1, step=1, key="vagas",
+                            help="Meta ao final de todo o processo.")
+            st.number_input("Quantas vão à Fase 2 (documentos)", min_value=1, step=1, key="pool_fase2",
+                            help="As mais bem colocadas entram na análise de documentos. As demais ficam "
+                                 "na fila (entram sozinhas se alguém for excluído).")
+        st.download_button("Planilha", exportacao.montar_planilha(f, vagas), "pontuacao_case2027.xlsx",
+                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           icon=":material/download:",
+                           help="Todas as organizações, com as vagas em destaque e a coluna "
+                                "'Interesse do patrocinador'.")
+    por_bloco = "Pontos por bloco" in (mostrar_col or [])
+    experiencia = "Experiência esportiva" in (mostrar_col or [])
 
     vista = f.sort_values(["Nota", "Entidade"], ascending=[False, True])
     if busca:
-        vista = vista[vista["Entidade"].str.contains(busca, case=False, na=False)]
+        vista = vista[vista["Entidade"].str.contains(busca, case=False, na=False, regex=False)]
     if situacoes:
         vista = vista[vista["Situação"].isin(situacoes)]
     if regioes:
         vista = vista[vista["Região"].isin(regioes)]
     if cidades:
         vista = vista[vista["Cidade"].isin(cidades)]
-    if ver.startswith("Só as") and "Fase 2" in ver:
+    if ver == "Fase 2":
         vista = vista[vista["em_pool"]]
-    elif ver == "Só as com atenção":
+    elif ver == "Com atenção":
         vista = vista[vista["Motivo"].fillna("").str.strip().ne("")]
 
-    st.caption(f"Mostrando {len(vista)} de {total} inscrições.")
+    st.caption(f"{len(vista)} de {total} inscrições, por nota. As {pool_size} melhores (Fase 2 = Sim, em lilás) "
+               "vão aos documentos; a coluna Atenção sinaliza pendências — ninguém é excluído aqui. "
+               "Clique numa linha para ver a ficha.")
 
     disp = vista.copy()
     disp["Fase 2"] = disp["em_pool"].map(lambda x: "Sim" if x else "")
@@ -124,16 +117,16 @@ def mostrar():
         disp["Pessoas atendidas"] = dig.map(lambda d: exp.get(d, {}).get("beneficiarios", ""))
         disp["Projetos (3 anos)"] = dig.map(lambda d: exp.get(d, {}).get("projetos", ""))
         exp_cols = ["Modalidades", "Pessoas atendidas", "Projetos (3 anos)"]
-    colunas = (["Posição", "Entidade", "Cidade", "UF", "Nota"] + bloco_cols + exp_cols
-               + ["Anos", "Fase 2", "Situação", "Motivo"])
-    disp = disp[colunas].rename(columns={**BLOCO_COL, "Anos": "Tempo (anos)",
-                                         "Motivo": "Atenção"})
+    # O que decide vem primeiro; detalhes depois.
+    colunas = (["Posição", "Entidade", "Nota", "Fase 2", "Situação", "Motivo", "Cidade", "UF", "Anos"]
+               + bloco_cols + exp_cols)
+    disp = disp[colunas].rename(columns={**BLOCO_COL, "Anos": "Tempo (anos)", "Motivo": "Atenção"})
 
     def _cor_sit(v):
         return CORES_SITUACAO.get(v, "")
 
     def _cor_pool(v):
-        return f"background-color:{tema.LAVANDA};color:{tema.ROXO};font-weight:600" if v == "Sim" else ""
+        return f"background-color:{tema.LAVANDA};color:{tema.ROXO_ESCURO};font-weight:600" if v == "Sim" else ""
 
     def _cor_conferencia(v):
         # resposta que a régua não reconhece: vermelho, para conferir no formulário
@@ -150,29 +143,33 @@ def mostrar():
     if blocos_vis:
         estilo = estilo.map(_cor_conferencia, subset=blocos_vis)
     col_cfg = {
-        "Posição": st.column_config.NumberColumn("Posição", width="small"),
-        "Nota": st.column_config.ProgressColumn("Nota", min_value=0, max_value=70, format="%d"),
+        "Posição": st.column_config.NumberColumn("Posição", width="small", pinned=True),
+        "Entidade": st.column_config.TextColumn("Entidade", width="large", pinned=True),
+        "Nota": st.column_config.ProgressColumn("Nota", min_value=0, max_value=70, format="%d", width="small"),
         "Fase 2": st.column_config.TextColumn("Fase 2", width="small"),
+        "Atenção": st.column_config.TextColumn("Atenção", width="medium",
+                                               help="Pendência sinalizada (não exclui). Confirmada nos documentos."),
         "Modalidades": st.column_config.TextColumn("Modalidades", width="large"),
         "Pessoas atendidas": st.column_config.TextColumn("Pessoas atendidas", width="small"),
         "Projetos (3 anos)": st.column_config.TextColumn("Projetos (3 anos)", width="large"),
-        "Atenção": st.column_config.TextColumn("Atenção", width="large",
-                                               help="Pendência sinalizada (não exclui). Confirmada na Fase 2."),
     }
     for rot in blocos_vis:
         col_cfg[rot] = st.column_config.TextColumn(
             rot, width="medium", help="Pontos deste bloco (máx. 10) · o que a entidade respondeu")
-    st.dataframe(estilo, width="stretch", hide_index=True, height=460, column_config=col_cfg)
+    altura = min(36 * (len(disp) + 1) + 4, 640)
+    sel = st.dataframe(estilo, width="stretch", hide_index=True, height=altura, column_config=col_cfg,
+                       on_select="rerun", selection_mode="single-row", key="ranking_tabela")
+    if blocos_vis:
+        st.caption("Em vermelho: resposta que a régua não reconhece (pontuou 0) — confira a opção no "
+                   "formulário do Wix.")
 
-    st.caption("Em vermelho: resposta que a régua não reconhece (pontuou 0) — confira a opção no formulário do Wix. "
-               "Régua completa em docs/REGUA-DE-PONTUACAO.md.")
-
-    # ----------------------- Ficha (opcional) -----------------------
-    with st.expander("Ficha de uma entidade (gráfico e comparação com a média) — opcional"):
-        nomes = list(vista.sort_values("Nota", ascending=False)["Entidade"])
-        escolha_ficha = st.selectbox("Abrir ficha de:", ["—"] + nomes, key="ficha_sel")
-        if escolha_ficha and escolha_ficha != "—":
-            _ui.ficha(f, escolha_ficha, dados, mapa)
+    # ----------------------- Ficha da entidade clicada -----------------------
+    linhas = sel.selection.rows if sel else []
+    if linhas:
+        entidade = disp.iloc[linhas[0]]["Entidade"]
+        with st.container(border=True):
+            st.subheader(entidade)
+            _ui.ficha(f, entidade, dados, mapa)
 
     v = validacao.validar(dados, mapa)
     with st.expander(f"Pendências na base ({len(v['pendencias'])})"):

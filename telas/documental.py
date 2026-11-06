@@ -210,14 +210,13 @@ def _analisar(arquivos, dig, nome, progresso=None):
 # ------------------------------------------------------------------ tela
 
 def mostrar():
-    st.title("3 · Documental (Fase 2)")
     _ui.cabecalho(3, "Acompanhe quem das melhores colocadas já enviou documentos. A leitura só "
                      "acontece quando você mandar (depois do fim das inscrições); aí você confere, "
                      "aprova ou exclui com motivo.")
 
     dados = st.session_state.get("dados")
     if dados is None or not st.session_state.get("mapa_ok"):
-        st.info("Importe um CSV na tela 1 · Importar para começar.")
+        st.info("Ainda não há inscrições. Elas chegam sozinhas do Wix na etapa Inscrições.")
         return
 
     mapa = st.session_state["mapa"]
@@ -305,18 +304,16 @@ def _lote(linhas, estado):
                     "entidades que ainda podem sair do pool.", icon=":material/event:")
         ia_on = conferencia.ia_ligada()
         modelo = (ia._cfg().get("modelo_documentos") or "claude-opus-5-5") if ia_on else None
-        c = st.columns([2, 1, 1], vertical_alignment="bottom")
-        n = c[0].number_input("Quantas ler agora (as mais bem colocadas primeiro)", min_value=1,
-                              max_value=len(pend), value=min(10, len(pend)), step=1, key="doc_qtd")
+        n = st.number_input("Quantas ler agora (as mais bem colocadas primeiro)", min_value=1,
+                            max_value=len(pend), value=min(10, len(pend)), step=1, key="doc_qtd", width=320)
         if ia_on:
             custo = n * _CUSTO_IA.get(modelo, 0.28)
             minutos = max(1, -(-n // _LER_JUNTAS)) * 1.2
-            c[1].metric("Custo estimado", f"US$ {custo:.2f}")
-            c[2].metric("Tempo estimado", f"~{minutos:.0f} min")
+            st.markdown(f":material/payments: Custo estimado **US$ {custo:.2f}**".replace(".", ",")
+                        + f" · :material/schedule: cerca de **{minutos:.0f} min**")
         else:
-            c[1].metric("Custo", "grátis")
-            c[2].metric("Tempo estimado", f"~{n * 2} min")
-            st.caption("Leitura por IA desligada: vai a leitura automática antiga (OCR), menos precisa.")
+            st.markdown(f":material/schedule: Leitura gratuita, cerca de **{n * 2} min** · leitura por IA "
+                        "desligada: vai a leitura automática antiga (OCR), menos precisa.")
         escolhidas = pend[:n]
         st.caption("Vão ser lidas: " + " · ".join(f"{l['pos']}º {l['nome']}" for l in escolhidas))
         ok = st.checkbox("Confirmo a leitura" + (" e o custo estimado" if ia_on else ""), key="doc_conf")
@@ -536,7 +533,7 @@ def _acoes(r, reg, auto, emails, dig):
             else:
                 reg["doc_status"] = "aprovada"
                 reg["doc_check"] = {k: True for k, _ in _TODAS}
-                _salvar_e_recarregar("Aprovada. Segue para a aba 5 · Entrevistas.")
+                _salvar_e_recarregar("Aprovada. Segue para a etapa Entrevistas.")
     with b2:
         if emails:
             corpo = contato.modelo_pedir_documentos(r["Entidade"], resumo.pendencias(auto) if auto else [])

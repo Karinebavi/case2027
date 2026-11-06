@@ -27,13 +27,12 @@ OPCOES_CHECK = ["(não avaliado)", "OK", "ALERTA"]
 
 
 def mostrar():
-    st.title("5 · Entrevistas (Fase 3)")
     _ui.cabecalho(5, "Aloque o mentor, siga o roteiro da entrevista, marque se a organização "
                      "compareceu e aprove ou exclua.")
 
     dados = st.session_state.get("dados")
     if dados is None or not st.session_state.get("mapa_ok"):
-        st.info("Importe um CSV na tela 1 · Importar para começar.")
+        st.info("Ainda não há inscrições. Elas chegam sozinhas do Wix na etapa Inscrições.")
         return
 
     mapa = st.session_state["mapa"]
@@ -52,7 +51,7 @@ def mostrar():
     c[3].metric("Descartadas (total)", cont["descartadas"])
 
     if len(aptas) == 0:
-        st.info("Nenhuma organização aprovada na documental ainda. Volte à aba 3 · Documental.")
+        st.info("Nenhuma organização aprovada nos documentos ainda. Elas aparecem aqui quando forem aprovadas na etapa Documentos.")
         return
 
     st.caption("Aprovar mantém no processo; não comparecer ou parecer negativo exclui e repesca a próxima.")

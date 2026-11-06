@@ -30,7 +30,6 @@ def mostrar():
     if "dados" not in st.session_state:
         _carregar_base_para_sessao()
 
-    st.title("1 · Importar")
     _ui.cabecalho(1, "As inscrições chegam sozinhas do Wix. Se precisar, suba um CSV ou busque de "
                      "outro formulário — tudo soma à base sem duplicar (o CNPJ é a chave).")
 
@@ -253,7 +252,7 @@ def _painel_base(base):
     ufs = base["uf"].nunique() if "uf" in base.columns else 0
     c[2].metric("Estados representados", ufs)
 
-    st.caption("Prossiga para a tela 2 · Resultado para ver as pontuações.")
+    st.caption("Veja as notas e o ranking na etapa Ranking.")
     with st.expander("Ver base (colunas principais)"):
         cols = [c for c in ["nome_entidade", "cnpj", "cidade", "uf", "data_envio", "data_fundacao"]
                 if c in base.columns]
