@@ -318,7 +318,7 @@ def _papel_do_campo(rotulo):
     "Nome completo do responsável" ou "seu cargo na entidade" — não são o nome
     da entidade."""
     r = _norm(rotulo)
-    if "cnpj" in r and "cartao" not in r:
+    if "cnpj" in r and "cartao" not in r and "confirm" not in r and "repita" not in r:
         return "cnpj"
     if "mail" in r:
         return "email"

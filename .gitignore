@@ -27,3 +27,6 @@ skills-lock.json
 
 # Gabarito com casos REAIS (CNPJs, documentos) — só nesta máquina, nunca no GitHub
 testes/gabarito/
+
+# Críticas de design (impeccable) — material de trabalho local
+.impeccable/

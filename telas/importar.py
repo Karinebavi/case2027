@@ -30,11 +30,11 @@ def mostrar():
     if "dados" not in st.session_state:
         _carregar_base_para_sessao()
 
-    st.title("1 · Importar")
     _ui.cabecalho(1, "As inscrições chegam sozinhas do Wix. Se precisar, suba um CSV ou busque de "
                      "outro formulário — tudo soma à base sem duplicar (o CNPJ é a chave).")
 
     atualizacao_automatica()
+    painel_cnpj()
 
     with st.expander("Outras formas de trazer inscrições (CSV ou outro formulário)"):
         arquivo = st.file_uploader("Arquivo CSV das inscrições", type=["csv"], key="upload_csv")
@@ -198,6 +198,81 @@ def atualizacao_automatica():
             st.rerun()
 
 
+def painel_cnpj():
+    """CNPJs a conferir: o sistema sugere a correção (com a prova) e a equipe confirma."""
+    from regras import cnpj
+    from regras.memoria import so_digitos
+    from telas import _calculo
+    base = st.session_state.get("dados")
+    if base is None or len(base) == 0 or not nuvem.ativo():
+        return
+    diags = st.session_state.get("_cnpj_diags")
+    if diags is None:
+        diags = cnpj.carregar_diagnosticos()
+        st.session_state["_cnpj_diags"] = diags
+    itens, sem_diag = [], 0
+    for _, linha in base.iterrows():
+        k = cnpj._chave(linha)
+        d = diags.get(k)
+        if d is None:
+            sem_diag += 1
+        elif d.get("status") in cnpj.A_CONFERIR and d.get("digitado") == so_digitos(linha.get("cnpj")):
+            itens.append((k, linha, d))
+
+    with st.container(border=True, key="painel_cnpj"):
+        c = st.columns([3, 1], vertical_alignment="center")
+        if itens:
+            c[0].markdown(f"**CNPJs a conferir** · {len(itens)} inscrição(ões)")
+        else:
+            c[0].markdown("**CNPJs a conferir** · nenhum" + (f" ({sem_diag} ainda não conferida(s))" if sem_diag else ""))
+        c[0].caption("O sistema confere o dígito do CNPJ, o nome na Receita e o campo de confirmação, e sugere a "
+                     "correção. Nada muda sem você clicar; o número original fica no histórico.")
+        if c[1].button("Conferir agora", icon=":material/fact_check:", width="stretch", key="cnpj_conferir"):
+            with st.spinner("Conferindo os CNPJs na Receita…"):
+                diags = cnpj.conferir_base(base, estado=_calculo.estado(), so_novas=False, diags=diags)
+                cnpj.salvar_diagnosticos(diags)
+            st.session_state["_cnpj_diags"] = diags
+            st.rerun()
+        for k, linha, d in itens:
+            nome = str(linha.get("nome_entidade") or "—")
+            with st.expander(f"{nome} · {cnpj.ROTULO.get(d['status'], d['status'])}", expanded=len(itens) <= 3):
+                st.markdown(f"Digitado: **{cnpj.formatar(d.get('digitado')) or '—'}** · {d.get('detalhe', '')}")
+                opcoes = {}
+                for s in d.get("sugestoes") or []:
+                    bate = f" · nome bate {int(s['semelhanca'] * 100)}%" if s.get("semelhanca") is not None else ""
+                    rotulo = (f"{cnpj.formatar(s['cnpj'])} — {s.get('razao_social') or 'nome não consultado'}"
+                              + (f" ({s['municipio']})" if s.get("municipio") else "") + f" · {s['fonte']}{bate}")
+                    opcoes[rotulo] = s["cnpj"]
+                outro_rot = "Digitar o CNPJ certo"
+                if opcoes:
+                    escolha = st.radio("Sugestões (a primeira é a mais provável)", list(opcoes) + [outro_rot],
+                                       key=f"cnpj_sug_{k}")
+                else:
+                    st.caption("Nenhuma sugestão segura. Confira no cartão CNPJ ou no site da Receita.")
+                    escolha = outro_rot
+                novo = opcoes.get(escolha)
+                if escolha == outro_rot:
+                    novo = st.text_input("CNPJ certo", key=f"cnpj_outro_{k}", placeholder="00.000.000/0000-00")
+                b = st.columns(2)
+                if b[0].button("Corrigir", type="primary", icon=":material/check:", key=f"cnpj_corrigir_{k}",
+                               width="stretch"):
+                    if not cnpj.valido(novo):
+                        st.warning("Esse CNPJ não existe (dígito verificador errado). Confira o número.")
+                    else:
+                        cnpj.corrigir(k, novo, nuvem.quem())
+                        st.session_state["dados"] = base_dados.carregar()
+                        for chave in ("_cnpj_diags", "processo"):
+                            st.session_state.pop(chave, None)
+                        st.cache_data.clear()
+                        st.toast(f"CNPJ corrigido para {cnpj.formatar(novo)}.")
+                        st.rerun()
+                if b[1].button("Está certo, manter", icon=":material/do_not_disturb_on:", key=f"cnpj_manter_{k}",
+                               width="stretch"):
+                    cnpj.manter(k, nuvem.quem())
+                    st.session_state.pop("_cnpj_diags", None)
+                    st.rerun()
+
+
 def _sincronizar_wix():
     """Busca manual, escolhendo o formulário (ex.: o de outro ano, para teste)."""
     if not wix.ativo():
@@ -253,7 +328,7 @@ def _painel_base(base):
     ufs = base["uf"].nunique() if "uf" in base.columns else 0
     c[2].metric("Estados representados", ufs)
 
-    st.caption("Prossiga para a tela 2 · Resultado para ver as pontuações.")
+    st.caption("Veja as notas e o ranking na etapa Ranking.")
     with st.expander("Ver base (colunas principais)"):
         cols = [c for c in ["nome_entidade", "cnpj", "cidade", "uf", "data_envio", "data_fundacao"]
                 if c in base.columns]

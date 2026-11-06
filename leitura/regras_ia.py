@@ -113,9 +113,16 @@ def _documentos(L, insc):
         itens.append(_item("documentos", "Entidade dos documentos", ATENCAO,
                            "Nem todos os documentos parecem ser da mesma entidade. "
                            + (ent.get("observacao") or "")))
+    campo = {"cartao_cnpj": "Cartão CNPJ", "estatuto": "Estatuto", "ata": "Ata"}
+    for t in L.get("_triagem") or []:
+        if not t.get("passa"):
+            itens.append(_item("documentos", f"Arquivo fora do padrão ({campo.get(t.get('grupo'), t.get('grupo'))})",
+                               PENDENCIA, f"{t.get('nome')}: {t.get('motivo')}. Não foi lido — peça o documento "
+                               "certo.", _ev(t.get("nome"), 1)))
     if L.get("_fora"):
         itens.append(_item("documentos", "Arquivos que não abriram", PENDENCIA,
-                           "Não foi possível ler: " + ", ".join(L["_fora"]) + " (Word ou arquivo corrompido)."))
+                           "Não foi possível ler: " + ", ".join(L["_fora"])
+                           + " (formato não aceito, como Word ou Excel, ou arquivo corrompido) — peça em PDF."))
     return itens
 
 
@@ -319,5 +326,13 @@ def avaliar(leitura, cnpj=None, data_inscricao=None, cidade_uf=None):
         if sts:
             blocos[b] = max(sts, key=_PESO.get)
     pior = max((i["status"] for i in itens), key=_PESO.get, default=OK)
-    resultado = "NAO_APTO" if pior == NAO_APTO else ("APTO" if pior == OK else "APTO_COM_AJUSTES")
-    return {"itens": itens, "blocos": blocos, "resultado": resultado}
+    # Sem cartão, sem estatuto ou sem ata da diretoria não há como aprovar: o resultado
+    # é Não apto até a entidade mandar o documento (cada item continua como Pendência).
+    faltam = [nome for nome, falta in (("cartão CNPJ", not leitura.get("cartao")),
+                                       ("estatuto", not leitura.get("estatuto")),
+                                       ("ata da diretoria", not _ata_da_diretoria(leitura))) if falta]
+    if pior == NAO_APTO or faltam:
+        resultado = "NAO_APTO"
+    else:
+        resultado = "APTO" if pior == OK else "APTO_COM_AJUSTES"
+    return {"itens": itens, "blocos": blocos, "resultado": resultado, "faltam": faltam}

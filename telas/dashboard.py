@@ -34,7 +34,7 @@ def _fig(fig, altura=340):
         font=dict(size=13), legend=dict(orientation="h", y=-0.15),
     )
     _CONTADOR[0] += 1
-    st.plotly_chart(fig, use_container_width=True, key=f"g{_CONTADOR[0]}")
+    st.plotly_chart(fig, width="stretch", key=f"g{_CONTADOR[0]}")
 
 
 def _contagem(serie, ordem=None, remover_vazio=True):
@@ -48,13 +48,12 @@ def _contagem(serie, ordem=None, remover_vazio=True):
 
 
 def mostrar():
-    st.title("7 · Dashboard")
     _ui.cabecalho(7, "Acompanhe a visão geral das inscrições em gráficos: situação, notas, "
                      "regiões, mapa do Brasil, dias e o perfil das OSCs.")
 
     dados = st.session_state.get("dados")
     if dados is None or not st.session_state.get("mapa_ok"):
-        st.info("Importe um CSV na tela 1 · Importar para ver o dashboard.")
+        st.info("Ainda não há inscrições. Elas chegam sozinhas do Wix na etapa Inscrições.")
         return
 
     _CONTADOR[0] = 0
@@ -184,7 +183,7 @@ def _mapa(work):
         coloraxis_colorbar=dict(title="Inscrições"),
         dragmode=False,
     )
-    st.plotly_chart(fig, use_container_width=True, key="mapa_uf",
+    st.plotly_chart(fig, width="stretch", key="mapa_uf",
                     config={"displayModeBar": False, "scrollZoom": False})
 
 
@@ -209,7 +208,7 @@ def _tempo_e_cidades(work):
         freqs = _contagem(work["cidade"]).to_dict() if "cidade" in work.columns else {}
         arr = _wordcloud(freqs)
         if arr is not None:
-            st.image(arr, use_container_width=True)
+            st.image(arr, width="stretch")
         else:
             st.caption("Sem cidades para exibir.")
     with col2:
@@ -271,7 +270,7 @@ def _perfil_oscs(work):
             freqs = _freq_tokens(work["modalidades"]) if "modalidades" in work.columns else {}
             arr = _wordcloud(freqs)
             if arr is not None:
-                st.image(arr, use_container_width=True)
+                st.image(arr, width="stretch")
             else:
                 st.caption("Sem modalidades informadas.")
 

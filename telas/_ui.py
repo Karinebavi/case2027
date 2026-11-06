@@ -7,20 +7,44 @@ import tema
 BLOCOS = ["Elaboração", "Execução", "Equipe", "Receita", "Infra adm.", "Infra esp.", "Digital"]
 COLS_B = ["b1", "b2", "b3", "b4", "b5", "b6", "b7"]
 
-# As 7 etapas do processo, na ordem das abas (para o guia "passo a passo").
-FASES = ["Importar", "Resultado", "Documental", "Análises", "Entrevistas", "Fichas", "Dashboard"]
+# As etapas da seleção, na ordem do processo (mesmos nomes do menu).
+FASES = ["Inscrições", "Ranking", "Documentos", "Patrocinador", "Entrevistas", "Selecionadas", "Painel"]
+PAGINAS = {}  # passo -> st.Page; o app.py preenche a cada execução
 
 
-def _stepper(atual):
-    partes = ['<div class="case-steps">']
-    for i, nome in enumerate(FASES, 1):
-        classe = "done" if i < atual else ("cur" if i == atual else "todo")
-        partes.append(f'<div class="step {classe}"><div class="bola">{i}</div>'
-                      f'<div class="rot">{nome}</div></div>')
-        if i < len(FASES):
-            partes.append('<div class="liga"></div>')
-    partes.append("</div>")
-    st.markdown("".join(partes), unsafe_allow_html=True)
+def contexto():
+    """Uma linha com o ciclo, as inscrições e as vagas (vai na barra lateral)."""
+    dados = st.session_state.get("dados")
+    n = len(dados) if dados is not None else 0
+    vagas = st.session_state.get("vagas", 10)
+    return (f"Ciclo 2027 · {n} inscrições · {vagas} vagas" if n else "Ciclo 2027 · nenhuma inscrição ainda")
+
+
+def _andamento():
+    """Número de cada etapa, para a faixa de andamento: {passo: texto curto}."""
+    dados = st.session_state.get("dados")
+    if dados is None or not st.session_state.get("mapa_ok") or len(dados) == 0:
+        return {}
+    try:
+        from regras import funil
+        from telas import _calculo
+        vagas = int(st.session_state.get("vagas", 10))
+        pool = int(st.session_state.get("pool_fase2", 30))
+        f = _calculo.funil_df(dados, st.session_state["mapa"], vagas, pool)
+        no_pool = f[f["em_pool"]]
+        est = _calculo.estado()
+        lidas = sum(1 for d in no_pool["dig"] if est.get(d, {}).get("doc_auto"))
+        doc_ok = int((no_pool["doc_status"] == "aprovada").sum())
+        interesse = int((no_pool["interesse"] == True).sum())  # noqa: E712 (coluna booleana)
+        entrev = funil.para_entrevista(f)
+        ent_ok = int((entrev["entrevista_status"] == "aprovada").sum())
+        sel = int((f["Fase"] == "Selecionada").sum())
+        docs = f"{doc_ok} aprovadas" if doc_ok else f"{lidas} de {len(no_pool)} lidas"
+        return {1: f"{len(f)}", 2: f"{len(no_pool)} na Fase 2", 3: docs,
+                4: f"{interesse} com interesse", 5: f"{ent_ok} aprovadas", 6: f"{sel} de {vagas}"}
+    except Exception as erro:  # o cabeçalho nunca derruba a tela
+        print(f"[ui] andamento ({type(erro).__name__})")
+        return {}
 
 
 def rotulos(df):
@@ -42,28 +66,24 @@ def rotulos(df):
 
 
 def cabecalho(passo=None, oque=None):
-    """Faixa institucional + guia passo a passo.
+    """Um cabeçalho só: o nome da etapa, a faixa de andamento da seleção (com os
+    números reais de cada etapa; clique para ir) e uma frase do que fazer aqui.
 
-    passo: número da etapa (1..7) para destacar no stepper.
+    passo: número da etapa (1..7).
     oque:  uma frase curta dizendo o que a pessoa faz nesta tela.
     """
-    dados = st.session_state.get("dados")
-    n = len(dados) if dados is not None else 0
-    vagas = st.session_state.get("vagas", 10)
-    if n:
-        ctx = f"Ciclo 2027 · {n} inscrições carregadas · {vagas} vagas"
-    else:
-        ctx = "Ciclo 2027 · nenhuma base carregada"
-    st.markdown(
-        f'<div class="case-header"><div class="t">CASE 2027 — Seleção de Entidades</div>'
-        f'<div class="c">{ctx}</div></div>',
-        unsafe_allow_html=True,
-    )
-    if passo:
-        _stepper(passo)
+    st.title(FASES[passo - 1] if passo else "CASE 2027")
+    if passo and PAGINAS:
+        contas = _andamento()
+        with st.container(horizontal=True, gap="small", key="andamento"):
+            for i in range(1, 7):
+                pg = PAGINAS.get(i)
+                if pg is None:
+                    continue
+                rotulo = FASES[i - 1] + (f" · {contas[i]}" if contas.get(i) else "")
+                st.page_link(pg, label=rotulo, icon=pg.icon, disabled=(i == passo))
     if oque:
-        st.markdown(f'<div class="case-guia"><b>O que fazer aqui:</b> {oque}</div>',
-                    unsafe_allow_html=True)
+        st.markdown(oque)
 
 
 def ficha(df, entidade, dados=None, mapa=None):
@@ -100,7 +120,7 @@ def ficha(df, entidade, dados=None, mapa=None):
     )
 
     c1, c2 = st.columns([3, 2])
-    c1.plotly_chart(fig, use_container_width=True)
+    c1.plotly_chart(fig, width="stretch")
     with c2:
         st.metric("Nota total", int(r["Nota"]))
         st.write(f"**Situação:** {r['Situação']}")

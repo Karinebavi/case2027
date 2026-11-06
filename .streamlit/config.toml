@@ -1,12 +1,51 @@
 # Identidade visual do CASE (case.org.br): roxo principal, lavanda e laranja.
+# Fontes e cores ficam AQUI (tema oficial do Streamlit). tema.py só cuida do que o
+# tema não alcança (cor dos títulos, legendas legíveis, idioma da página).
 # Para trocar a cor principal, mude primaryColor aqui e ROXO em tema.py.
 [theme]
 base = "light"
 primaryColor = "#9333EA"
 backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F5F3FC"
+textColor = "#221F2E"
+borderColor = "#E4DFF2"
+linkColor = "#7E22CE"
+linkUnderline = false
+font = "'Nunito Sans':https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700&display=swap"
+headingFont = "'Baloo 2':https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&display=swap"
+baseFontSize = 15
+headingFontSizes = ["2rem", "1.45rem", "1.2rem", "1.05rem", "1rem", "0.95rem"]
+headingFontWeights = [700, 700, 700, 600, 600, 600]
+metricValueFontSize = "1.85rem"
+metricValueFontWeight = 700
+baseRadius = "10px"
+showWidgetBorder = true
+showSidebarBorder = true
+paddingTop = "1.25rem"
+paddingBottom = "3rem"
+# Caixas de aviso e selos na paleta da marca (o azul padrão destoava do roxo)
+blueColor = "#7C3AED"
+violetColor = "#9333EA"
+orangeColor = "#C2410C"
+greenColor = "#2E7D32"
+redColor = "#B84A4A"
+dataframeHeaderBackgroundColor = "#F5F3FC"
+dataframeHeaderTextColor = "#3E087C"
+dataframeBorderColor = "#E4DFF2"
+chartCategoricalColors = ["#9333EA", "#FF9A2D", "#B57BEE", "#3E087C", "#C2410C", "#6B6780", "#D8D8FF"]
+
+[theme.sidebar]
+backgroundColor = "#FBFAFE"
 secondaryBackgroundColor = "#F2F0FC"
 textColor = "#221F2E"
-font = "sans serif"
+borderColor = "#E4DFF2"
+primaryColor = "#9333EA"
+linkColor = "#7E22CE"
+paddingTop = "0.75rem"
+
+[client]
+# Esconde o botão "Deploy" e o menu de desenvolvedor para a equipe.
+toolbarMode = "minimal"
 
 [browser]
 gatherUsageStats = false

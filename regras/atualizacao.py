@@ -73,6 +73,14 @@ def atualizar(simular=False, origem="robô"):
     base_dados.salvar(final)
     nuvem.registrar("atualizar_wix", {k: r.get(k) for k in ("origem", "no_wix", "novas", "atualizadas",
                                                              "total_base")})
+    # Confere o CNPJ das que chegaram (dígito, Receita, confirmação) e guarda as sugestões.
+    try:
+        from regras import cnpj
+        diags = cnpj.conferir_base(final, so_novas=True)
+        cnpj.salvar_diagnosticos(diags)
+        r["cnpj_a_conferir"] = sum(1 for d in diags.values() if d.get("status") in cnpj.A_CONFERIR)
+    except Exception as erro:  # a conferência do CNPJ nunca impede a inscrição de entrar
+        print(f"[atualizacao] conferência do CNPJ falhou ({type(erro).__name__})")
     _status(r, simular)
     r["cnpjs_novos"] = cnpjs_novos  # só para a tela marcar as novas; o robô não imprime
     return r
