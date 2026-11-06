@@ -75,6 +75,28 @@ def analisar(arquivos, cnpj_inscricao=None, nome_inscricao=None, progresso=None,
     return p
 
 
+def ia_ligada():
+    """A leitura principal pela IA está configurada (Secrets [ia] com provedor claude + chave)?"""
+    from leitura import ia
+    return ia.provedor_ativo() == "claude"
+
+
+def analisar_ia(arquivos, cnpj_inscricao=None, nome_inscricao=None, data_inscricao=None, cidade_uf=None):
+    """Leitura pela IA (o PDF inteiro, como imagem) + regras da conferência.
+    Devolve (resumo_compacto, para_salvar, info) ou (None, None, info) se a IA
+    não estiver ligada ou falhar — aí a tela usa analisar() (OCR + palavras)."""
+    from leitura import ia, leitor_ia, regras_ia, resumo_ia
+    if not ia_ligada():
+        return None, None, {"erro": "IA desligada"}
+    cfg = ia._cfg()
+    modelo = cfg.get("modelo_documentos") or leitor_ia.MODELO_PADRAO
+    leitura, info = leitor_ia.ler(arquivos, cfg["anthropic_api_key"], modelo=modelo, entidade=nome_inscricao)
+    if leitura is None:
+        return None, None, info
+    av = regras_ia.avaliar(leitura, cnpj=cnpj_inscricao, data_inscricao=data_inscricao, cidade_uf=cidade_uf)
+    return resumo_ia.compacto(av, leitura, info), resumo_ia.para_salvar(av, info), info
+
+
 def criterios(parecer):
     return _parecer.sugestoes_criterios(parecer)
 

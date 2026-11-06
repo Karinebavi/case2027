@@ -62,6 +62,36 @@ Inscrições (Wix)
   documento; um botão **analisa sozinho, uma por uma**, as que têm documentos no Wix
   (o resultado fica salvo — não precisa refazer); ao clicar numa linha, **três
   cartões** (Cartão, Estatuto, Ata) e as ações: aprovar, pedir documento, excluir.
+- **Quem lê e quem decide (desde 06/11/2026):** a **IA (Claude)** lê o próprio PDF,
+  página por página como imagem — inclusive carimbo, selo e escaneado torto — e
+  classifica cada página pelo **conteúdo** (um PDF pode misturar cartão, estatuto,
+  ata, edital). Ela só **lê**: devolve artigo, título, trecho, página, período do
+  mandato, nº de registro/averbação, livro, folha, data, cartório e cidade. Quem
+  **decide** é o sistema, sempre do mesmo jeito (`leitura/regras_ia.py`). Sem IA
+  (sem chave ou sem crédito), vale a leitura antiga (OCR + palavras).
+- **Cada item sai com:** status (**OK / Atenção / Confira visualmente / Pendência /
+  Não apto**) + o motivo em uma linha + a evidência (arquivo, página, artigo, trecho).
+- **Regras (combinadas com a Karine em 06/11/2026):**
+  - **Cartão CNPJ — Não apto** se a situação não for ATIVA, se a natureza for de
+    empresa (2xx, Ltda, MEI, empresário) ou se a abertura for depois de 01/03/2026.
+    Emissão em dia diferente da inscrição = Atenção. O resto é atenção, nunca exclusão.
+  - **Finalidade:** esporte no artigo de finalidades (ou em qualquer artigo da seção
+    de finalidades, inclusive "Das Atividades") = OK; só em meios, prerrogativas ou
+    no caráter/nome = Atenção; nenhum = Pendência. Número de artigo pulado ou
+    repetido = Atenção.
+  - **Mandato:** não exige ata de "eleição/posse" — **qualquer ata que eleja ou
+    empossa** (inclusive a de **fundação**) vale se o mandato estiver **vigente na
+    data da inscrição**. Ordem: período escrito na ata → data da assembleia +
+    duração (da ata ou do estatuto). Período só com mês/ano vai até o fim do mês.
+    Vencido = Pendência (Atenção se o estatuto/ata prevê prorrogação). Ata e
+    estatuto com duração diferente = Atenção, com os dois trechos.
+  - **Cartório:** só vale registro/averbação em **Registro Civil de Pessoas
+    Jurídicas** (cartório que acumula Títulos e Documentos **e** Pessoas Jurídicas
+    vale). Selo de firma ou de autenticação **não** é registro. "Só protocolado" ou
+    sem registro = Pendência. Carimbo que existe mas não dá para ler = **Confira
+    visualmente** (nunca Pendência). Cartório em cidade diferente da sede = Atenção.
+- **Gabarito:** casos reais conferidos pela Karine ficam em `testes/gabarito/`
+  (**só no computador dela — fora do GitHub**) e servem para medir a leitura.
 - **Ligação com o Wix:** a entidade preenche a inscrição e, no fim, segue um link
   para o **formulário de documentos**. Esse formulário **precisa pedir o CNPJ** —
   é por ele que o sistema liga os documentos à inscrição certa (depois tenta o

@@ -178,7 +178,7 @@ def pendencias(resumo):
     saida = []
     for chave, rotulo in nomes.items():
         doc = resumo.get(chave) or {}
-        for cor, texto in doc.get("linhas", []):
+        for cor, texto, *_ in doc.get("linhas", []):
             if cor != "verde":
                 saida.append(f"{rotulo}: {texto}")
     return saida

@@ -163,14 +163,48 @@ def _situacao(pool, estado, ligacoes, wix_ok):
     return linhas
 
 
-def _guardar(reg, p, arquivos, origem, como, versao):
-    """Salva no processo o resumo compacto da análise (sem os arquivos)."""
-    r = resumo.compacto(p)
+def _guardar(reg, analise, arquivos, origem, como, versao):
+    """Salva no processo o resumo compacto da análise (sem os arquivos).
+    analise = (resumo_compacto, para_salvar) — da IA ou da leitura antiga."""
+    r, salvar = analise
+    r = dict(r)
     r.update(origem=origem, como=como or "", versao=versao,
              data=dt.date.today().strftime("%d/%m/%Y"),
              arquivos=[n for lst in arquivos.values() for n, _ in lst])
     reg["doc_auto"] = r
-    reg["doc_parecer"] = conferencia.resumo_para_salvar(p)
+    reg["doc_parecer"] = salvar
+
+
+def _inscricao(dig):
+    """Data de envio da inscrição e cidade/UF da entidade (para as regras da IA)."""
+    dados = st.session_state.get("dados")
+    if dados is None or "cnpj" not in dados:
+        return None, None
+    lin = dados[dados["cnpj"].map(so_digitos) == dig]
+    if len(lin) == 0:
+        return None, None
+    lin = lin.iloc[-1]
+    from regras.pontuacao import parse_data
+    data_env = parse_data(lin.get("data_envio", "")) if "data_envio" in lin else None
+    cid = "/".join(str(lin.get(k, "") or "").strip() for k in ("cidade", "uf") if str(lin.get(k, "") or "").strip())
+    return data_env, cid or None
+
+
+def _analisar(arquivos, dig, nome, progresso=None):
+    """Lê os documentos: pela IA (o PDF inteiro) quando ligada; se a IA estiver
+    desligada ou falhar, pela leitura antiga (OCR + palavras).
+    Devolve ((resumo, para_salvar), parecer_antigo_ou_None, aviso_ou_None)."""
+    aviso = None
+    if conferencia.ia_ligada():
+        if progresso:
+            progresso("a IA está lendo os documentos…", 0.1)
+        data_env, cid = _inscricao(dig)
+        r, salvar, info = conferencia.analisar_ia(arquivos, dig, nome, data_inscricao=data_env, cidade_uf=cid)
+        if r is not None:
+            return (r, salvar), None, None
+        aviso = f"Leitura pela IA indisponível ({info.get('erro')}); usei a leitura automática antiga."
+    p = conferencia.analisar(arquivos, dig, nome, progresso=progresso)
+    return (resumo.compacto(p), conferencia.resumo_para_salvar(p)), p, aviso
 
 
 # ------------------------------------------------------------------ tela
@@ -266,7 +300,7 @@ def _lote(linhas, estado):
     if not rodar:
         return
     barra = st.progress(0.0, text="Começando…")
-    n, falhas = len(pend), []
+    n, falhas, avisos = len(pend), [], set()
     for i, l in enumerate(pend):
         def _prog(txt, frac, i=i, nome=l["nome"]):
             barra.progress(min((i + frac) / n, 1.0), text=f"{i + 1} de {n} · {nome}: {txt}")
@@ -275,8 +309,10 @@ def _lote(linhas, estado):
             arquivos = wix.baixar_envio(l["envio"])
             if not any(arquivos.values()):
                 raise RuntimeError("nenhum arquivo baixado")
-            p = conferencia.analisar(arquivos, l["dig"], l["nome"], progresso=_prog)
-            _guardar(proc.registro(estado, l["dig"]), p, arquivos, "wix", l["como"], _versao(l["envio"]))
+            analise, _p, aviso = _analisar(arquivos, l["dig"], l["nome"], progresso=_prog)
+            if aviso:
+                avisos.add(aviso)
+            _guardar(proc.registro(estado, l["dig"]), analise, arquivos, "wix", l["como"], _versao(l["envio"]))
             _calculo.salvar_estado()  # a cada entidade: fechar a tela não perde o que já foi feito
         except Exception as erro:
             print(f"[documental] lote: falhou a entidade {i + 1} de {n} ({type(erro).__name__})")
@@ -285,6 +321,8 @@ def _lote(linhas, estado):
     msg = f"{n - len(falhas)} de {n} analisadas."
     if falhas:
         msg += " Não consegui ler: " + ", ".join(falhas) + " — abra o detalhe e confira à mão."
+    if avisos:
+        msg += " " + " ".join(sorted(avisos))
     st.session_state["_doc_msg"] = msg
     st.rerun()
 
@@ -370,13 +408,24 @@ def _detalhe(f, linha, estado, contatos):
 
 
 def _cartoes(auto, dig):
+    if auto.get("leitura") == "ia":
+        st.caption("Documentos lidos pela IA, que viu as páginas como imagem, e conferidos pelas regras do "
+                   "programa." + (f" Modelo {auto.get('modelo')}." if auto.get("modelo") else "")
+                   + " Confira o que estiver em Atenção, Confira visualmente ou Pendência.")
+        if auto.get("observacoes"):
+            with st.expander("Outras observações da leitura"):
+                for o in auto["observacoes"]:
+                    st.markdown(f"- {_md(o)}")
     for col, (chave, titulo, icone) in zip(st.columns(3), _DOCS):
         doc = auto.get(chave) or {}
         with col, st.container(border=True):
             st.markdown(f"**{icone} {titulo}**")
-            for cor, texto in doc.get("linhas", []):
+            for linha in doc.get("linhas", []):
+                cor, texto = linha[0], linha[1]
                 rotulo, badge = _SELO.get(cor, ("Conferir", "orange"))
-                st.markdown(f":{badge}-badge[{rotulo}] {_md(texto)}")
+                if len(linha) > 2:  # leitura pela IA: o status nas palavras da conferência
+                    rotulo = linha[2]
+                st.markdown(f":{badge}-badge[{_md(rotulo)}] {_md(texto)}")
             if doc.get("trecho"):
                 st.caption("Trecho: “" + _md(doc["trecho"]) + "”")
             if doc.get("pagina") and doc.get("arquivo"):
@@ -397,7 +446,7 @@ def _acoes(r, reg, auto, emails, dig):
         return
 
     pontos = [(titulo, cor, t) for chave, titulo, _ in _DOCS
-              for cor, t in ((auto or {}).get(chave) or {}).get("linhas", []) if cor != "verde"]
+              for cor, t, *_ in ((auto or {}).get(chave) or {}).get("linhas", []) if cor != "verde"]
     b1, b2, b3 = st.columns(3)
     with b1:
         conferi = True
@@ -511,8 +560,8 @@ def _analisar_e_guardar(dig, r, reg, arquivos, origem, como, versao):
         return
     barra = st.progress(0.0, text="Começando a leitura…")
     try:
-        p = conferencia.analisar(arquivos, dig, r["Entidade"],
-                                 progresso=lambda t, x: barra.progress(min(max(x, 0.0), 1.0), text=t))
+        analise, p, aviso = _analisar(arquivos, dig, r["Entidade"],
+                                      progresso=lambda t, x: barra.progress(min(max(x, 0.0), 1.0), text=t))
     except Exception as erro:
         barra.empty()
         print(f"[documental] análise falhou ({type(erro).__name__})")
@@ -520,11 +569,12 @@ def _analisar_e_guardar(dig, r, reg, arquivos, origem, como, versao):
                  "corrompido ou uma digitalização muito ruim — confira à mão.")
         return
     barra.empty()
-    _guardar(reg, p, arquivos, origem, como, versao)
+    _guardar(reg, analise, arquivos, origem, como, versao)
     st.session_state[f"_arq_{dig}"] = arquivos
-    st.session_state.setdefault("_pareceres", {})[dig] = {"assinatura": conferencia.assinatura(arquivos),
-                                                         "parecer": p}
-    _salvar_e_recarregar("Análise concluída e salva.")
+    if p is not None:
+        st.session_state.setdefault("_pareceres", {})[dig] = {"assinatura": conferencia.assinatura(arquivos),
+                                                             "parecer": p}
+    _salvar_e_recarregar("Análise concluída e salva." + (f" {aviso}" if aviso else ""))
 
 
 # ------------------------------------------------------------------ documentos e parecer
