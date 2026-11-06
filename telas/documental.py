@@ -16,8 +16,11 @@ Aprovando, segue para a entrevista; excluindo, a próxima do ranking entra.
 """
 import datetime as dt
 import json
+import io
 import os
 import re
+import unicodedata
+import zipfile
 
 import pandas as pd
 import streamlit as st
@@ -163,16 +166,46 @@ def _situacao(pool, estado, ligacoes, wix_ok):
     return linhas
 
 
-def _guardar(reg, analise, arquivos, origem, como, versao):
+def _guardar(reg, analise, arquivos, origem, como, versao, info_ia=None):
     """Salva no processo o resumo compacto da análise (sem os arquivos).
-    analise = (resumo_compacto, para_salvar) — da IA ou da leitura antiga."""
+    analise = (resumo_compacto, para_salvar) — da IA ou da leitura antiga.
+    info_ia (só na leitura pela IA): a leitura completa vai para doc_leitura, de
+    onde sai o relatório da entidade sem pagar uma nova leitura."""
     r, salvar = analise
     r = dict(r)
-    r.update(origem=origem, como=como or "", versao=versao,
-             data=dt.date.today().strftime("%d/%m/%Y"),
+    hoje = dt.date.today().strftime("%d/%m/%Y")
+    r.update(origem=origem, como=como or "", versao=versao, data=hoje,
              arquivos=[n for lst in arquivos.values() for n, _ in lst])
     reg["doc_auto"] = r
     reg["doc_parecer"] = salvar
+    if info_ia and info_ia.get("leitura"):
+        reg["doc_leitura"] = {"leitura": info_ia["leitura"], "modelo": info_ia.get("modelo"), "data": hoje,
+                              "segundos": info_ia.get("segundos"), "custo_usd": info_ia.get("custo_usd")}
+    else:
+        reg.pop("doc_leitura", None)  # leitura antiga: não há relatório da IA para estes arquivos
+
+
+def _relatorio(reg, dig, nome, insc=None):
+    """HTML do relatório da entidade (da leitura da IA guardada) ou None.
+    insc = (data_inscricao, cidade_uf) já lidos, quando chamado fora do script da tela."""
+    lido = reg.get("doc_leitura")
+    if not lido:
+        return None
+    from leitura import relatorio
+    data_env, cid = insc if insc is not None else _inscricao(dig)
+    return relatorio.montar(nome, lido["leitura"], {"modelo": lido.get("modelo")}, cnpj=_cnpj_fmt(dig),
+                            cidade_uf=cid, data_inscricao=data_env, data_leitura=lido.get("data"))
+
+
+def _cnpj_fmt(dig):
+    d = so_digitos(dig)
+    return f"{d[:2]}.{d[2:5]}.{d[5:8]}/{d[8:12]}-{d[12:]}" if len(d) == 14 else d
+
+
+def _nome_arquivo(nome):
+    base = re.sub(r"[^A-Za-z0-9]+", "-", unicodedata.normalize("NFKD", str(nome)).encode("ascii", "ignore")
+                  .decode()).strip("-").lower()[:60]
+    return f"conferencia-documental-{base or 'entidade'}.html"
 
 
 def _inscricao(dig):
@@ -193,7 +226,7 @@ def _inscricao(dig):
 def _analisar(arquivos, dig, nome, progresso=None):
     """Lê os documentos: pela IA (o PDF inteiro) quando ligada; se a IA estiver
     desligada ou falhar, pela leitura antiga (OCR + palavras).
-    Devolve ((resumo, para_salvar), parecer_antigo_ou_None, aviso_ou_None)."""
+    Devolve ((resumo, para_salvar), parecer_antigo_ou_None, aviso_ou_None, info_ia_ou_None)."""
     aviso = None
     if conferencia.ia_ligada():
         if progresso:
@@ -201,10 +234,10 @@ def _analisar(arquivos, dig, nome, progresso=None):
         data_env, cid = _inscricao(dig)
         r, salvar, info = conferencia.analisar_ia(arquivos, dig, nome, data_inscricao=data_env, cidade_uf=cid)
         if r is not None:
-            return (r, salvar), None, None
+            return (r, salvar), None, None, info
         aviso = f"Leitura pela IA indisponível ({info.get('erro')}); usei a leitura automática antiga."
     p = conferencia.analisar(arquivos, dig, nome, progresso=progresso)
-    return (resumo.compacto(p), conferencia.resumo_para_salvar(p)), p, aviso
+    return (resumo.compacto(p), conferencia.resumo_para_salvar(p)), p, aviso, None
 
 
 # ------------------------------------------------------------------ tela
@@ -251,6 +284,7 @@ def mostrar():
 
     _metricas(linhas, f, wix_ok)
     _lote(linhas, estado)
+    _baixar_todos(linhas, estado)
 
     dig = _quadro(linhas)
     if dig:
@@ -327,6 +361,29 @@ def _lote(linhas, estado):
         _lote_antigo(escolhidas, estado)
 
 
+def _baixar_todos(linhas, estado):
+    """Um .zip com o relatório de cada entidade do pool já lida pela IA."""
+    lidas = [l for l in linhas if (estado.get(l["dig"]) or {}).get("doc_leitura")]
+    if not lidas:
+        return
+    # Dados da inscrição lidos AQUI (o zip é montado só no clique, fora do script da tela).
+    insc = {l["dig"]: _inscricao(l["dig"]) for l in lidas}
+
+    def _zip():
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            for l in lidas:
+                html_rel = _relatorio(estado[l["dig"]], l["dig"], l["nome"], insc=insc[l["dig"]])
+                if html_rel:
+                    z.writestr(f"{l['pos']:02d}-{_nome_arquivo(l['nome'])}", html_rel)
+        buf.seek(0)
+        return buf
+
+    st.download_button(f"Baixar os relatórios das {len(lidas)} entidades lidas pela IA (.zip)", _zip,
+                       "relatorios-conferencia-documental.zip", "application/zip",
+                       icon=":material/folder_zip:", on_click="ignore", key="rel_todos")
+
+
 def _lote_ia(escolhidas, estado):
     """IA lendo várias ao mesmo tempo. O que a IA não conseguir vai para a leitura antiga."""
     import concurrent.futures as cf
@@ -354,7 +411,7 @@ def _lote_ia(escolhidas, estado):
                     sobra.append(l)
                 else:
                     _guardar(proc.registro(estado, l["dig"]), (r, salvar), arquivos, "wix", l["como"],
-                             _versao(l["envio"]))
+                             _versao(l["envio"]), info_ia=info)
                     _calculo.salvar_estado()  # a cada entidade: fechar a tela não perde o que já foi feito
             except Exception as erro:
                 print(f"[documental] leitura IA falhou ({type(erro).__name__})")
@@ -468,6 +525,14 @@ def _detalhe(f, linha, estado, contatos):
             _cartoes(teste, dig)
         elif auto:
             _cartoes(auto, dig)
+            html_rel = _relatorio(reg, dig, r["Entidade"])
+            if html_rel:
+                st.download_button("Baixar relatório da conferência", html_rel.encode("utf-8"),
+                                   _nome_arquivo(r["Entidade"]), "text/html", icon=":material/description:",
+                                   key=f"rel_{dig}", on_click="ignore",
+                                   help="Uma página com o que a IA leu em cada documento, como separou as "
+                                        "páginas e o que o sistema decidiu em cada item. Abre no navegador; "
+                                        "para PDF, use Imprimir > Salvar como PDF.")
         elif linha["envio"]:
             st.info("Documentos encontrados no Wix, ainda não analisados. Use **Analisar agora** abaixo "
                     "(ou o botão de lote acima, para todas de uma vez).")
@@ -633,8 +698,8 @@ def _analisar_e_guardar(dig, r, reg, arquivos, origem, como, versao):
         return
     barra = st.progress(0.0, text="Começando a leitura…")
     try:
-        analise, p, aviso = _analisar(arquivos, dig, r["Entidade"],
-                                      progresso=lambda t, x: barra.progress(min(max(x, 0.0), 1.0), text=t))
+        analise, p, aviso, info_ia = _analisar(arquivos, dig, r["Entidade"],
+                                               progresso=lambda t, x: barra.progress(min(max(x, 0.0), 1.0), text=t))
     except Exception as erro:
         barra.empty()
         print(f"[documental] análise falhou ({type(erro).__name__})")
@@ -642,7 +707,7 @@ def _analisar_e_guardar(dig, r, reg, arquivos, origem, como, versao):
                  "corrompido ou uma digitalização muito ruim — confira à mão.")
         return
     barra.empty()
-    _guardar(reg, analise, arquivos, origem, como, versao)
+    _guardar(reg, analise, arquivos, origem, como, versao, info_ia=info_ia)
     st.session_state[f"_arq_{dig}"] = arquivos
     if p is not None:
         st.session_state.setdefault("_pareceres", {})[dig] = {"assinatura": conferencia.assinatura(arquivos),

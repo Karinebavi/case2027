@@ -94,6 +94,7 @@ def analisar_ia(arquivos, cnpj_inscricao=None, nome_inscricao=None, data_inscric
     if leitura is None:
         return None, None, info
     av = regras_ia.avaliar(leitura, cnpj=cnpj_inscricao, data_inscricao=data_inscricao, cidade_uf=cidade_uf)
+    info["leitura"] = leitura  # guardada no processo para o relatório (sem pagar nova leitura)
     return resumo_ia.compacto(av, leitura, info), resumo_ia.para_salvar(av, info), info
 
 
