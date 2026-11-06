@@ -167,6 +167,13 @@ def test_cartorio_em_outra_cidade_e_atencao():
     assert _status(_av(L), "cartorio", "Cidade") == ["ATENCAO"]
 
 
+@pytest.mark.parametrize("campo", ["cartao", "estatuto", "atas"])
+def test_sem_documento_essencial_o_resultado_e_nao_apto(campo):
+    L = _leitura(**{campo: [] if campo == "atas" else None})
+    av = _av(L)
+    assert av["resultado"] == "NAO_APTO" and av["faltam"]
+
+
 def test_documentos_de_outro_cnpj_sao_pendencia():
     L = _leitura(cartao__cnpj="11.222.333/0001-81")
     av = _av(L, cnpj="11222333000100")

@@ -119,13 +119,30 @@ def _versao(envio):
     return f"{envio.get('_id')}|{envio.get('_data')}"
 
 
+def _auto_atual(reg, dig):
+    """Resumo da análise com as REGRAS ATUAIS: se há a leitura da IA guardada, as regras
+    são reaplicadas sobre ela (mudou uma regra, o quadro acompanha sem nova leitura)."""
+    auto, lido = reg.get("doc_auto"), reg.get("doc_leitura")
+    if not (auto and lido and lido.get("leitura")):
+        return auto
+    try:
+        from leitura import regras_ia, resumo_ia
+        data_env, cid = _inscricao(dig)
+        av = regras_ia.avaliar(lido["leitura"], cnpj=dig, data_inscricao=data_env, cidade_uf=cid)
+        return {**auto, **resumo_ia.compacto(av, lido["leitura"], {"modelo": lido.get("modelo")})}
+    except Exception as erro:  # nunca derruba o quadro: fica o resumo salvo
+        print(f"[documental] reaplicar regras ({type(erro).__name__})")
+        return auto
+
+
 def _situacao(pool, estado, ligacoes, wix_ok):
     """Uma linha por entidade do pool: envio no Wix, resumo salvo e o que falta."""
     linhas = []
+    ia_on = conferencia.ia_ligada()
     for r in pool.to_dict("records"):
         dig = r["dig"]
         reg = estado.get(dig, {})
-        auto = reg.get("doc_auto")
+        auto = _auto_atual(reg, dig)
         status = reg.get("doc_status", "pendente")
         envio, como = ligacoes.get(dig, (None, None))
 
@@ -133,8 +150,10 @@ def _situacao(pool, estado, ligacoes, wix_ok):
             precisa = False
         elif not auto:
             precisa = True
-        else:  # reanalisa só se o envio do Wix mudou (envio à mão não é sobrescrito)
-            precisa = auto.get("origem") == "wix" and auto.get("versao") != _versao(envio)
+        else:  # reanalisa se o envio do Wix mudou (envio à mão não é sobrescrito) ou se
+            # foi lida pela leitura antiga e agora a IA está ligada
+            precisa = auto.get("origem") == "wix" and (auto.get("versao") != _versao(envio)
+                                                       or (ia_on and auto.get("leitura") != "ia"))
 
         if envio:
             n = len(wix.grupos_enviados(envio))
@@ -331,8 +350,9 @@ def _lote(linhas, estado):
         if not pend:
             st.caption("Nenhuma entidade do pool com documentos esperando leitura.")
             return
-        st.caption(f"{len(pend)} entidade(s) do pool já enviaram documentos e ainda não foram lidas. "
-                   "A leitura só acontece quando você mandar; até lá o quadro só acompanha quem enviou.")
+        st.caption(f"{len(pend)} entidade(s) do pool com documentos ainda não lidos pela IA (nunca lidos, "
+                   "lidos só pela leitura antiga ou que mandaram arquivos novos). A leitura só acontece "
+                   "quando você mandar.")
         if dt.date.today() <= _FIM_INSCRICOES:
             st.info(f"As inscrições vão até {_FIM_INSCRICOES:%d/%m/%Y}. Ler antes disso gasta crédito com "
                     "entidades que ainda podem sair do pool.", icon=":material/event:")
@@ -495,7 +515,7 @@ def _detalhe(f, linha, estado, contatos):
     dig = linha["dig"]
     r = f[f["dig"] == dig].iloc[0]
     reg = proc.registro(estado, dig)
-    auto = reg.get("doc_auto")
+    auto = _auto_atual(reg, dig)
 
     with st.container(border=True):
         topo = st.columns([6, 1], vertical_alignment="center")
