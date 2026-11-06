@@ -22,6 +22,22 @@ def test_digito_verificador():
     assert not cnpj.valido("11111111111111")
 
 
+def test_nome_antigo_cnpj_valido_continua_existindo():
+    # regras/validacao.py (pendências da tela Ranking) usa cnpj_valido — não pode sumir
+    from regras import validacao  # noqa: F401
+    assert cnpj.cnpj_valido(CERTO) is True and cnpj.cnpj_valido("123") is False
+
+
+def test_pendencias_da_base_funcionam():
+    import pandas as pd
+
+    from regras import validacao
+    dados = pd.DataFrame({"cnpj": [cnpj.formatar(CERTO), "123"], "nome_entidade": ["A", "B"]})
+    mapa = {"cnpj": "cnpj", "nome_entidade": "nome_entidade"}
+    v = validacao.validar(dados, mapa)
+    assert v["invalido"] == 1
+
+
 def test_candidatos_acham_o_numero_certo():
     assert CERTO in dict(cnpj.candidatos(_troca(CERTO, 3)))                         # um dígito trocado
     invertido = CERTO[:4] + CERTO[5] + CERTO[4] + CERTO[6:]

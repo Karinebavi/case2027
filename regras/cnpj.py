@@ -67,6 +67,11 @@ def valido(cnpj):
     return len(d) == 14 and len(set(d)) > 1 and completar(d[:12]) == d
 
 
+def cnpj_valido(valor) -> bool:
+    """Nome antigo (usado por regras/validacao.py e pela tela Ranking): mesmo que valido()."""
+    return valido(valor)
+
+
 def formatar(cnpj):
     d = so_digitos(cnpj)
     return f"{d[:2]}.{d[2:5]}.{d[5:8]}/{d[8:12]}-{d[12:]}" if len(d) == 14 else str(cnpj or "")
