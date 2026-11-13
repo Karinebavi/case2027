@@ -204,7 +204,7 @@ def _guardar(reg, analise, arquivos, origem, como, versao, info_ia=None):
         reg.pop("doc_leitura", None)  # leitura antiga: não há relatório da IA para estes arquivos
 
 
-def _relatorio(reg, dig, nome, insc=None):
+def _relatorio(reg, dig, nome, insc=None, embutido=False):
     """HTML do relatório da entidade (da leitura da IA guardada) ou None.
     insc = (data_inscricao, cidade_uf) já lidos, quando chamado fora do script da tela."""
     lido = reg.get("doc_leitura")
@@ -213,7 +213,8 @@ def _relatorio(reg, dig, nome, insc=None):
     from leitura import relatorio
     data_env, cid = insc if insc is not None else _inscricao(dig)
     return relatorio.montar(nome, lido["leitura"], {"modelo": lido.get("modelo")}, cnpj=_cnpj_fmt(dig),
-                            cidade_uf=cid, data_inscricao=data_env, data_leitura=lido.get("data"))
+                            cidade_uf=cid, data_inscricao=data_env, data_leitura=lido.get("data"),
+                            embutido=embutido)
 
 
 def _cnpj_fmt(dig):
@@ -544,8 +545,14 @@ def _detalhe(f, linha, estado, contatos):
                 st.rerun()
             _cartoes(teste, dig)
         elif auto:
-            _cartoes(auto, dig)
             html_rel = _relatorio(reg, dig, r["Entidade"])
+            if html_rel:
+                # Lida pela IA: o próprio relatório aparece aqui (mais limpo que os cartões).
+                # Todo texto da IA vai escapado e o relatório proíbe scripts (Content-Security-Policy).
+                st.iframe(_relatorio(reg, dig, r["Entidade"], embutido=True), height="content",
+                          alt=f"Relatório da conferência documental de {r['Entidade']}")
+            else:
+                _cartoes(auto, dig)  # leitura antiga: os cartões resumidos
             if html_rel:
                 st.download_button("Baixar relatório da conferência", html_rel.encode("utf-8"),
                                    _nome_arquivo(r["Entidade"]), "text/html", icon=":material/description:",

@@ -110,8 +110,10 @@ def _paginas(L):
     return "<ul>" + "".join(itens) + "</ul>" if itens else "<p class=mut>—</p>"
 
 
-def montar(nome, leitura, info=None, cnpj=None, cidade_uf=None, data_inscricao=None, data_leitura=None):
-    """HTML (texto) do relatório. leitura = o dict do leitor_ia guardado no processo."""
+def montar(nome, leitura, info=None, cnpj=None, cidade_uf=None, data_inscricao=None, data_leitura=None,
+           embutido=False):
+    """HTML (texto) do relatório. leitura = o dict do leitor_ia guardado no processo.
+    embutido=True: versão para aparecer dentro da tela (sem o rodapé e sem margens largas)."""
     info = info or {}
     L = leitura or {}
     av = regras_ia.avaliar(L, cnpj=cnpj, data_inscricao=data_inscricao, cidade_uf=cidade_uf)
@@ -199,11 +201,16 @@ def montar(nome, leitura, info=None, cnpj=None, cidade_uf=None, data_inscricao=N
     sub = " · ".join(x for x in [cidade_uf, f"CNPJ {cnpj}" if cnpj else None,
                                  f"inscrição em {data_inscricao:%d/%m/%Y}" if isinstance(data_inscricao, dt.date)
                                  else None] if x)
+    # Embutido na tela: o nome da entidade já está no topo do detalhe; fica o resultado.
+    extra = ("main { padding:4px 4px 16px; max-width:none; } footer { display:none; } "
+             ".topo h1, .topo > div > p:first-child { display:none; } header.topo { align-items:center; }"
+             if embutido else "")
     return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="script-src 'none'; object-src 'none'; base-uri 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Conferência documental · {e(nome)}</title>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet">
-<style>{CSS}</style></head><body><main>
+<style>{CSS}{extra}</style></head><body><main>
 <header class=topo><div><p class=mut style="margin:0">CASE 2027 · conferência documental</p>
 <h1>{e(nome)}</h1><p class=mut style="margin:4px 0 0">{e(sub)}</p></div>
 <span class='pill grande {cls}'>{rot}</span></header>

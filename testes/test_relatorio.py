@@ -24,6 +24,13 @@ def test_relatorio_tem_decisao_leitura_e_paginas():
     assert "<script>" not in h and "&lt;script&gt;" in h   # texto da IA nunca vira HTML
 
 
+def test_relatorio_proibe_scripts_e_tem_versao_embutida():
+    L = copy.deepcopy(BASE)
+    h = relatorio.montar("Associação Exemplo", L, embutido=True)
+    assert "script-src 'none'" in h            # aparece dentro da tela num iframe: nada de código
+    assert "footer { display:none; }" in h
+
+
 def test_relatorio_sem_estatuto_nem_ata_nao_quebra():
     L = copy.deepcopy(BASE)
     L["estatuto"], L["atas"] = None, []
