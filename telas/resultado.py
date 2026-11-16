@@ -140,6 +140,7 @@ def mostrar():
     colunas = (["Posição", "Entidade", "Nota", "Situação", "Fase 2", "Problemas", "Cidade", "UF", "Anos"]
                + bloco_cols + resp_cols)
     disp = disp[colunas].rename(columns={**BLOCO_COL, "Anos": "Tempo (anos)"})
+    disp["Posição"] = pd.to_numeric(disp["Posição"], errors="coerce").astype("Int64")  # eliminada: em branco
 
     def _cor_sit(val):
         return CORES_SITUACAO.get(val, "")
