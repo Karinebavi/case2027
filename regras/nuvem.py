@@ -27,6 +27,11 @@ class NuvemErro(Exception):
     """Falha ao falar com o banco. Nunca engolimos: perder dado é pior."""
 
 
+def _limpo(valor):
+    """Valor de chave sem espaços nem aspas em volta (copiar do secrets.toml traz as aspas)."""
+    return str(valor or "").strip().strip("\"'").strip()
+
+
 def _robo():
     """Rodando fora da tela (o robô do GitHub que busca as inscrições)?"""
     return os.environ.get("CASE_ROBO") == "1"
@@ -39,9 +44,10 @@ def _config():
         chave = str(st.secrets.get("supabase_key", "")).strip()
     except Exception:
         pass
-    # Fora do Streamlit (robô do GitHub): as mesmas chaves vêm do ambiente.
-    url = url or os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
-    chave = chave or os.environ.get("SUPABASE_KEY", "").strip()
+    # Fora do Streamlit (robô do GitHub): as mesmas chaves vêm do ambiente. Tira aspas e
+    # espaços que vêm junto quando o valor é copiado do secrets.toml ("https://...").
+    url = url or _limpo(os.environ.get("SUPABASE_URL", "")).rstrip("/")
+    chave = chave or _limpo(os.environ.get("SUPABASE_KEY", ""))
     # aceita a URL copiada da tela "Data API" (termina em /rest/v1)
     for sufixo in ("/rest/v1", "/rest"):
         if url.endswith(sufixo):

@@ -55,7 +55,8 @@ def _cfg():
             cfg = dict(st.secrets["wix"])
     except Exception:
         cfg = {}
-    g = lambda k: cfg.get(k) or os.environ.get("WIX_" + k.upper()) or ""
+    # No robô as chaves vêm do ambiente; tira aspas/espaços que vêm ao copiar do secrets.toml.
+    g = lambda k: str(cfg.get(k) or os.environ.get("WIX_" + k.upper()) or "").strip().strip("\"'").strip()
     return {
         "api_key": g("api_key"),
         "site_id": g("site_id"),

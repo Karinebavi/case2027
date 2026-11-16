@@ -38,6 +38,20 @@ def test_pendencias_da_base_funcionam():
     assert v["invalido"] == 1
 
 
+def test_robo_aceita_chaves_coladas_com_aspas(monkeypatch):
+    import types
+
+    from regras import nuvem, wix
+    # Como no robô: sem secrets.toml (só as variáveis de ambiente do GitHub)
+    monkeypatch.setattr(nuvem, "st", types.SimpleNamespace(secrets={}))
+    monkeypatch.setattr(wix, "st", None)
+    monkeypatch.setenv("SUPABASE_URL", ' "https://exemplo.supabase.co/rest/v1" ')
+    monkeypatch.setenv("SUPABASE_KEY", '"chave-de-teste"')
+    monkeypatch.setenv("WIX_SITE_ID", "'site-de-teste'")
+    assert nuvem._config() == ("https://exemplo.supabase.co", "chave-de-teste")
+    assert wix._cfg()["site_id"] == "site-de-teste"
+
+
 def test_candidatos_acham_o_numero_certo():
     assert CERTO in dict(cnpj.candidatos(_troca(CERTO, 3)))                         # um dígito trocado
     invertido = CERTO[:4] + CERTO[5] + CERTO[4] + CERTO[6:]

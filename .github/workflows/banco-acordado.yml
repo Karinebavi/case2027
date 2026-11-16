@@ -26,6 +26,8 @@ jobs:
             echo "::error::Cadastre SUPABASE_URL e SUPABASE_KEY nos Secrets do GitHub — sem elas o banco pausa."
             exit 1
           fi
+          # tira aspas e espaços (quando o valor é copiado do secrets.toml)
+          URL=$(echo "$URL" | tr -d "\"' "); KEY=$(echo "$KEY" | tr -d "\"' ")
           base="${URL%/}"; base="${base%/rest/v1}"
           extra=()
           case "$KEY" in eyJ*) extra=(-H "Authorization: Bearer $KEY");; esac
