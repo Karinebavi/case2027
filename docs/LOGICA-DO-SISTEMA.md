@@ -44,7 +44,8 @@ Inscrições (Wix)
   Fase 1 não eliminava ninguém):** as perguntas **14 a 19** do formulário (esporte no
   estatuto, mandato em vigor, estatuto e ata registrados, computador com câmera e
   microfone, internet, 2h por semana) eliminam quem não responder "Sim". CNPJ aberto
-  **depois de 01/03/2026** também elimina. A eliminada **continua visível** no Ranking,
+  **depois de 01/03/2026** também elimina, e **empresa** também (nome com Ltda, EIRELI,
+  ou ME/EPP/MEI/S.A. no fim — o CASE é para organizações sem fins lucrativos). A eliminada **continua visível** no Ranking,
   com a nota e o motivo, mas **sem posição e fora da Fase 2**. Pergunta em branco não
   elimina: vira aviso.
 - **Uma lista só (Ranking):** nota, situação (Classificada / Fila de espera /
@@ -124,7 +125,20 @@ Inscrições (Wix)
 - As **vagas** finais (padrão 10) saem aqui, cada uma em um **cartão completo**:
   dados, **documentos**, contato (e-mail/WhatsApp já prontos) — tudo organizado.
 
-> **Tela 7 (Dashboard)** não é uma fase: é só a **visão geral** (números e gráficos).
+> **Tela 7 (Relatórios)** não é uma fase: é o **relatório técnico** das inscrições.
+> Filtros em cascata (situação, região, estado, cidade, nota, tempo de existência,
+> data de envio, equipe, receita); estatística descritiva da nota (média, mediana,
+> desvio-padrão, quartis); desempenho por bloco da régua; território; perfil das
+> OSCs; qualidade dos dados; e **exportação em PDF** do recorte filtrado (só números
+> agregados — sem nome, CNPJ ou contato). Tela e PDF usam a mesma fonte
+> (`regras/relatorio_dados.py`).
+>
+> **Estado e cidade padronizados** (`regras/localidade.py`, lista oficial do IBGE em
+> `base/municipios.csv`): "BH", "belo horizonte - mg" e "Belo Horisonte" contam como
+> Belo Horizonte/MG; "Minas", "mg" e "Minas Gerias" como MG. Quando o sistema não
+> decide sozinho (cidade de outro estado, homônimos, semelhança baixa) fica
+> **"a conferir"**, com sugestão, na aba Qualidade dos dados. O texto original nunca
+> é apagado da base; Ranking, mapa e relatórios usam o padronizado.
 
 ---
 

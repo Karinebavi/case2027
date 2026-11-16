@@ -66,6 +66,22 @@ def test_cnpj_aberto_depois_do_corte_elimina(base):
     assert _ranking(dados, mapa).loc[0]["Status"] == "Em classificação"
 
 
+@pytest.mark.parametrize("nome", ["Exemplo Serviços Esportivos Ltda", "EXEMPLO ESPORTES LTDA.",
+                                  "Exemplo Eventos EIRELI", "Exemplo Esportes ME", "Exemplo Gestão S/A"])
+def test_empresa_elimina(base, nome):
+    dados, mapa = base
+    _apta(dados, mapa)
+    dados.loc[0, mapa["nome_entidade"]] = nome
+    linha = _ranking(dados, mapa).loc[0]
+    assert linha["Status"] == "Eliminada" and "Empresa" in linha["Motivo"]
+
+
+@pytest.mark.parametrize("nome", ["Associação Esportiva Exemplo", "Instituto Me Dá a Mão",
+                                  "Clube Atlético Exemplo", "Associação Amigos do Esporte"])
+def test_associacao_nao_e_confundida_com_empresa(nome):
+    assert not pontuacao.e_empresa(nome)
+
+
 def test_pergunta_em_branco_nao_elimina_vira_atencao(base):
     dados, mapa = base
     _apta(dados, mapa)

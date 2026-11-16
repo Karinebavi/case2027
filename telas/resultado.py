@@ -148,17 +148,17 @@ def mostrar():
         por_dig = {so_digitos(r.get("cnpj", "")): r.to_dict() for _, r in dados.iterrows()}
         conf = _conferencia(dados, mapa)
         for chave, rotulo, bloco in RESPOSTAS:
-            disp[rotulo] = disp["dig"].map(lambda d, k=chave: str((por_dig.get(d) or {}).get(k, "") or "").strip())
-            resp_cols.append(rotulo)
-            if bloco:  # pergunta que vale nota: a coluna de pontos vem logo ao lado
-                col = _col_pontos(chave)
-                disp[col] = disp[bloco].astype(int)
+            if bloco:  # pergunta que vale nota: os pontos vêm ANTES da resposta da mesma pergunta
+                col = _col_pontos(chave)  # ("21 · pontos" | "21. Elaboração"), lendo da esquerda
+                disp[col] = disp[bloco].astype(int)  # para a direita, sem parecer da pergunta seguinte
                 resp_cols.append(col)
                 pts_cols.append(col)
                 i = int(bloco[1:]) - 1  # resposta que a régua não reconhece: marcar em vermelho
                 nao_reconhecida[rotulo] = [str((conf.get(d) or [""] * 7)[i]).startswith("0 · não reconhecida")
                                            for d in disp["dig"]]
-    colunas = ["Posição", "Entidade", "Nota", "Situação", "Fase 2", "Problemas", "Cidade", "UF", "Anos"] + resp_cols
+            disp[rotulo] = disp["dig"].map(lambda d, k=chave: str((por_dig.get(d) or {}).get(k, "") or "").strip())
+            resp_cols.append(rotulo)
+    colunas =["Posição", "Entidade", "Nota", "Situação", "Fase 2", "Problemas", "Cidade", "UF", "Anos"] + resp_cols
     disp = disp[colunas].rename(columns={"Anos": "Tempo (anos)"})
     # Eliminada não tem posição: mostra "—". Texto com espaços à esquerda para a ordem
     # continuar certa ao clicar no título (" 2" vem antes de "10"; "—" vai para o fim).
@@ -201,8 +201,9 @@ def mostrar():
     sel = st.dataframe(estilo, width="stretch", hide_index=True, height=altura, column_config=col_cfg,
                        on_select="rerun", selection_mode="multi-row", key="ranking_tabela")
     if todas_resp:
-        st.caption("As perguntas seguem a numeração do formulário. Ao lado de cada pergunta que vale nota "
-                   "(21, 22, 24 a 28), a coluna “pontos” mostra quanto aquela resposta deu, de 0 a 10. "
+        st.caption("As perguntas seguem a numeração do formulário. Nas que valem nota (21, 22, 24 a 28), "
+                   "a coluna “pontos” vem logo ANTES da resposta, com o mesmo número: “21 · pontos” é a nota "
+                   "da resposta 21, de 0 a 10. "
                    "Em vermelho: resposta que a régua não reconhece (pontuou 0) — confira no formulário do Wix.")
 
     # ----------------------- ficha (1 linha) ou comparação (2+) -----------------------

@@ -162,6 +162,32 @@ def _quando(iso):
         return "—"
 
 
+def atualizar_se_antigo(minutos=60):
+    """Rede de segurança do robô: na 1ª vez que a equipe abre o sistema (por sessão),
+    se a última busca no Wix tem mais de `minutos`, busca agora. Nunca trava o sistema."""
+    import datetime as dt
+    import os
+
+    from regras import atualizacao
+    if st.session_state.get("_wix_conferido") or os.environ.get("CASE_TESTE"):
+        return
+    st.session_state["_wix_conferido"] = True
+    try:
+        if not (wix.ativo() and nuvem.ativo()):
+            return
+        ult = atualizacao.ultima() or {}
+        quando = dt.datetime.fromisoformat(ult["quando"]) if ult.get("quando") else None
+        if quando and dt.datetime.now(dt.timezone.utc) - quando < dt.timedelta(minutes=minutos):
+            return
+        with st.spinner("Buscando inscrições novas no Wix…"):
+            r = atualizacao.atualizar(origem=nuvem.quem())
+        if r.get("ok") and r.get("novas"):
+            st.session_state["novos_cnpjs"] = set(r.get("cnpjs_novos") or [])
+            st.toast(f"{r['novas']} inscrição(ões) nova(s) do Wix.")
+    except Exception:  # a busca nunca impede o sistema de abrir
+        pass
+
+
 def atualizacao_automatica():
     """Painel 'Inscrições do Wix': última atualização do robô + botão Atualizar agora."""
     from regras import atualizacao
@@ -176,7 +202,8 @@ def atualizacao_automatica():
             c[0].markdown(f"**Inscrições do Wix** · atualizadas em {_quando(ult.get('quando'))} "
                           f"({ult.get('origem', 'robô')}): {ult.get('novas', 0)} nova(s), "
                           f"{ult.get('no_wix', '—')} no formulário.")
-            c[0].caption("O robô confere o Wix sozinho de 2 em 2 horas. Use o botão para não esperar.")
+            c[0].caption("O robô confere o Wix de 2 em 2 horas, e o sistema confere ao ser aberto se a "
+                         "última busca tem mais de 1 hora. Use o botão para não esperar.")
         elif ult:
             c[0].error(f"A última atualização ({_quando(ult.get('quando'))}) falhou: {ult.get('erro')}.")
         else:
@@ -318,7 +345,8 @@ def _painel_base(base):
     n = len(base)
     st.subheader("Base acumulada")
     if n == 0:
-        st.info("A base está vazia. Suba um CSV para começar.")
+        st.info("Ainda não há inscrições na base. Elas chegam sozinhas do Wix assim que alguém se "
+                "inscrever." if wix.ativo() else "A base está vazia. Suba um CSV para começar.")
         return
 
     novos = st.session_state.get("novos_cnpjs") or set()

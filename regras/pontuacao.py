@@ -8,10 +8,12 @@ cai para os dois lados (iniciante demais ou avançada demais).
 
 Para recalibrar, edite as TABELAS abaixo. Nenhuma tela precisa mudar.
 """
+import re
+import unicodedata
 from datetime import datetime, date
 import pandas as pd
 
-from regras import regiao as regiao_mod
+from regras import localidade
 
 # Mecanismos incentivados contados nas perguntas de elaboração/execução.
 TOKENS = ["Esporte", "Cultura", "Infância", "Idoso", "PRONAS", "PRONON", "Emenda"]
@@ -35,6 +37,17 @@ ELIMINATORIAS = [
 # 1 ano de funcionamento: data de abertura até 01/03/2026 (definida pela Karine em 16/11/2026;
 # o regulamento v2 cita 15/01/2026).
 CORTE_ABERTURA = date(2026, 3, 1)
+
+# O CASE é para organizações sem fins lucrativos: nome de EMPRESA (Ltda, EIRELI,
+# "sociedade limitada"; ou ME, EPP, MEI, S.A. no fim do nome) elimina na Etapa 1
+# (decisão da Karine em 16/11/2026). Na Fase 2, o Cartão CNPJ confere a natureza jurídica.
+_EMPRESA = re.compile(r"\b(ltda|eireli|sociedade limitada|microempreendedor)\b"
+                      r"|[\s\-]+(me|epp|mei|s\.?\s?a\.?|s/a)\s*\.?\s*$")
+
+
+def e_empresa(nome):
+    s = unicodedata.normalize("NFKD", _txt(nome)).encode("ascii", "ignore").decode().lower().strip()
+    return bool(_EMPRESA.search(s))
 
 # Bloco 4 — Receita bruta anual (faixas do formulário FINAL; alvo: 51 a 150 mil).
 # Curva mantida do quadro original (5, 8, 10, 3, 2), remapeada para as novas faixas.
@@ -249,10 +262,15 @@ def calcular(dados, mapa, hoje=None):
                 motivos.append(f"{texto.split('.')[0]}. não respondida")
             elif not resposta.startswith("sim"):
                 eliminacao.append(texto)
+        if e_empresa(g("nome_entidade")):
+            eliminacao.append("Empresa (Ltda/ME/EIRELI), não é organização sem fins lucrativos")
         abertura = parse_data(g("data_fundacao"))
         if abertura and abertura > CORTE_ABERTURA:
             eliminacao.append(f"CNPJ aberto em {abertura:%d/%m/%Y}, depois de {CORTE_ABERTURA:%d/%m/%Y}")
         anos = _anos(g("data_fundacao"), ref)  # informativo (coluna "Anos")
+        # Estado e cidade padronizados (lista do IBGE): "BH", "belo horizonte - mg" e
+        # "Belo Horisonte" viram Belo Horizonte/MG. O texto original fica na base.
+        loc = localidade.local(g("cidade"), g("uf"))
 
         total = b1 + b2 + b3 + b4 + b5 + b6 + b7  # a nota aparece sempre, mesmo na eliminada
         status = "Eliminada" if eliminacao else "Em classificação"
@@ -261,14 +279,17 @@ def calcular(dados, mapa, hoje=None):
         linhas.append({
             "Entidade": _txt(g("nome_entidade")),
             "CNPJ": _txt(g("cnpj")).strip(),
-            "Cidade": _txt(g("cidade")).strip(),
-            "UF": regiao_mod.para_uf(g("uf")) or _txt(g("uf")).strip(),
-            "Região": regiao_mod.regiao_de(g("uf")) or "(não identificada)",
+            "Cidade": loc["cidade"] or _txt(g("cidade")).strip(),
+            "UF": loc["uf"] or _txt(g("uf")).strip(),
+            "Região": loc["regiao"] or "(não identificada)",
             "b1": b1, "b2": b2, "b3": b3, "b4": b4, "b5": b5, "b6": b6, "b7": b7,
             "Nota": total,
             "Status": status,
             "Motivo": motivo,
             "Anos": round(anos, 1) if anos is not None else None,
             "_data_fundacao": _txt(g("data_fundacao")),
+            "_cidade_digitada": loc["original"], "_uf_digitada": loc["uf_original"],
+            "_local_status": loc["status"], "_uf_status": loc["status_uf"],
+            "_local_sugestao": loc["sugestao"], "_codigo_ibge": loc["codigo_ibge"],
         })
     return pd.DataFrame(linhas)

@@ -35,7 +35,10 @@ def para_uf(valor):
     s = _sem_acento(str(valor)).upper().strip()
     if len(s) == 2 and s in UF_VALIDAS:
         return s
-    return NOMES.get(s, "")
+    if s in NOMES:
+        return NOMES[s]
+    from regras import localidade  # erros de digitação, "MG - Minas Gerais", apelidos
+    return localidade.uf(valor)["uf"]
 
 
 def regiao_de(valor):
