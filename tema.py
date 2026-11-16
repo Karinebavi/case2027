@@ -31,11 +31,12 @@ SEMAFORO = {
     "Fila de espera": ("#FBF1DD", "#7A5412"),
     "Fora do perfil": ("#ECECEC", "#555555"),
     "Inelegível": ("#F6E4E4", "#8A2A2A"),
+    "Eliminada": ("#F6E4E4", "#8A2A2A"),
 }
 # Versão saturada (uma cor) para barras/fatias de gráfico:
 SEMAFORO_FORTE = {
     "Classificada": "#2E7D32", "Fila de espera": "#C99A2E",
-    "Fora do perfil": "#9E9E9E", "Inelegível": "#B84A4A",
+    "Fora do perfil": "#9E9E9E", "Inelegível": "#B84A4A", "Eliminada": "#B84A4A",
 }
 # "Quadradinhos" de status (fundo, texto) da Documental — mesma paleta do semáforo.
 COR_STATUS = {

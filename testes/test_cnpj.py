@@ -38,6 +38,21 @@ def test_pendencias_da_base_funcionam():
     assert v["invalido"] == 1
 
 
+def test_data_de_abertura_do_formulario_2027_e_reconhecida():
+    mapa = mapeamento.auto_map(["Nome da entidade", "CNPJ", "6. Data de Abertura da Entidade"])
+    assert mapa["data_fundacao"] == "6. Data de Abertura da Entidade"
+
+
+def test_pendencia_diz_qual_campo_esta_em_branco():
+    import pandas as pd
+
+    from regras import validacao
+    dados = pd.DataFrame({"cnpj": [cnpj.formatar(CERTO)], "nome_entidade": ["A"], "data_fundacao": [""]})
+    v = validacao.validar(dados, {"cnpj": "cnpj", "nome_entidade": "nome_entidade",
+                                   "data_fundacao": "data_fundacao"})
+    assert v["pendencias"].iloc[0]["Problema"] == "em branco: Data de fundação"
+
+
 def test_robo_aceita_chaves_coladas_com_aspas(monkeypatch):
     import types
 

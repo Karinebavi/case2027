@@ -22,6 +22,20 @@ NOTA_MECANISMO = {0: 5, 1: 10, 2: 3}  # 3 ou mais -> 2
 # Bloco 3 — Composição da equipe (alvo: 3 a 5)
 EQUIPE = {"1 ou 2": 8, "3 a 5": 10, "6 a 8": 4, "9 a 12": 3, "Mais de 12": 2}
 
+# Perguntas eliminatórias do formulário (Regulamento 8.1): qualquer resposta que não
+# comece com "Sim" elimina na Etapa 1. A 16 só passa com "Sim — os dois estão registrados".
+ELIMINATORIAS = [
+    ("estatuto", "14. Estatuto sem o esporte entre as finalidades"),
+    ("mandato", "15. Mandato da diretoria não está em vigor"),
+    ("registro", "16. Estatuto e ata não estão os dois registrados em cartório"),
+    ("computador", "17. Sem computador com câmera e microfone"),
+    ("internet", "18. Sem internet para as reuniões"),
+    ("disponibilidade", "19. Sem 2h por semana para a mentoria"),
+]
+# 1 ano de funcionamento: data de abertura até 01/03/2026 (definida pela Karine em 16/11/2026;
+# o regulamento v2 cita 15/01/2026).
+CORTE_ABERTURA = date(2026, 3, 1)
+
 # Bloco 4 — Receita bruta anual (faixas do formulário FINAL; alvo: 51 a 150 mil).
 # Curva mantida do quadro original (5, 8, 10, 3, 2), remapeada para as novas faixas.
 RECEITA = {
@@ -221,28 +235,28 @@ def calcular(dados, mapa, hoje=None):
 
         b7 = _digital(g)[0]
 
-        # Observações operacionais (requisitos da mentoria online). Decisão da
-        # Karine: a Fase 1 NÃO exclui ninguém. Estas pendências — e também ter
-        # menos de 1 ano — NÃO zeram a nota nem tiram do ranking: viram apenas um
-        # selo "Atenção" para o mentor avaliar. O filtro real de quem não segue é
-        # a conferência documental (Fase 2).
-        OPERACIONAIS = [
-            ("computador", "Sem computador com câmera/microfone"),
-            ("internet", "Sem internet para as reuniões"),
-            ("disponibilidade", "Sem disponibilidade de 2h por semana"),
-        ]
-        motivos = [texto for chave, texto in OPERACIONAIS
-                   if _txt(g(chave)).strip().lower() != "sim"]
-
+        # Regulamento CASE 2027, 8.1 e 4.1 c (aplicado em 16/11/2026, a pedido da Karine):
+        # as perguntas 14 a 19 são ELIMINATÓRIAS — resposta diferente de "Sim" elimina
+        # na Etapa 1. CNPJ aberto depois de 01/03/2026 também elimina (data definida pela
+        # Karine). A eliminada continua visível no Ranking, com a nota e o motivo, mas
+        # fica fora da posição e da Fase 2. Pergunta em branco não elimina: vira Atenção.
+        eliminacao, motivos = [], []
+        for chave, texto in ELIMINATORIAS:
+            if not mapa.get(chave):
+                continue  # pergunta que não existe neste formulário (ex.: base de 2026)
+            resposta = _txt(g(chave)).strip().lower()
+            if not resposta:
+                motivos.append(f"{texto.split('.')[0]}. não respondida")
+            elif not resposta.startswith("sim"):
+                eliminacao.append(texto)
+        abertura = parse_data(g("data_fundacao"))
+        if abertura and abertura > CORTE_ABERTURA:
+            eliminacao.append(f"CNPJ aberto em {abertura:%d/%m/%Y}, depois de {CORTE_ABERTURA:%d/%m/%Y}")
         anos = _anos(g("data_fundacao"), ref)  # informativo (coluna "Anos")
-        if anos is not None and anos < 1:
-            motivos.append("Menos de 1 ano de funcionamento")
 
-        # TODAS pontuam e entram no ranking (sem eliminatória e sem corte de teto
-        # na Fase 1). A coluna "Motivo" é a OBSERVAÇÃO/sinalização, não exclusão.
-        total = b1 + b2 + b3 + b4 + b5 + b6 + b7
-        status = "Em classificação"
-        motivo = " · ".join(motivos)
+        total = b1 + b2 + b3 + b4 + b5 + b6 + b7  # a nota aparece sempre, mesmo na eliminada
+        status = "Eliminada" if eliminacao else "Em classificação"
+        motivo = " · ".join(eliminacao + motivos)
 
         linhas.append({
             "Entidade": _txt(g("nome_entidade")),

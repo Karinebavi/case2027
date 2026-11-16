@@ -25,23 +25,25 @@ def validar(dados, mapa):
     invalido = ~cnpjs.map(cnpj_mod.cnpj_valido)
     repetido = cnpjs.duplicated(keep=False) & cnpjs.ne("")
 
-    def tem_branco(linha):
-        for chave in NAO_PODE_BRANCO:
-            col = mapa.get(chave)
-            if col and str(linha.get(col, "")).strip() == "":
-                return True
-        return False
-    branco = dados.apply(tem_branco, axis=1)
+    from base import campos as campos_def
+    rotulo = {c[1]: c[2] for c in campos_def.CAMPOS}
+
+    def vazios(linha):
+        """Quais campos obrigatórios estão em branco (pelo nome, para a equipe saber o quê)."""
+        return [rotulo.get(chave, chave) for chave in NAO_PODE_BRANCO
+                if mapa.get(chave) and str(linha.get(mapa[chave], "")).strip() == ""]
+    em_branco = dados.apply(vazios, axis=1) if n else pd.Series([], dtype=object)
+    branco = em_branco.map(bool) if n else pd.Series([], dtype=bool)
 
     problemas = []
-    for iv, rp, br in zip(invalido, repetido, branco):
+    for iv, rp, vz in zip(invalido, repetido, em_branco):
         partes = []
         if rp:
             partes.append("CNPJ repetido")
         if iv:
             partes.append("CNPJ inválido")
-        if br:
-            partes.append("campo obrigatório em branco")
+        if vz:
+            partes.append("em branco: " + ", ".join(vz))
         problemas.append(" · ".join(partes))
 
     pendentes = (invalido | repetido | branco).values

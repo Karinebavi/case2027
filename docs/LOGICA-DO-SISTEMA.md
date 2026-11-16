@@ -40,14 +40,18 @@ Inscrições (Wix)
 
 - O sistema puxa as inscrições do Wix e **pontua todas** (0 a 70 pontos, em 7 blocos).
 - Classifica **da maior nota para a menor**, num ranking único nacional.
-- **REGRA DE OURO: ninguém é excluído aqui.** Todas entram no ranking e pontuam
-  normalmente. Quem tem alguma pendência (sem computador/internet/disponibilidade
-  para a mentoria online, ou menos de 1 ano de funcionamento) **não sai da lista** —
-  recebe apenas um **selo "Atenção"** para o mentor olhar. A nota mais baixa já a
-  coloca mais embaixo naturalmente.
-- **Tudo à vista:** o quadro mostra cidade, nota, **em quais blocos** ela ganhou os
-  pontos e o selo de atenção — sem precisar abrir uma por uma.
-- O **filtro de verdade** de quem não segue é a Fase 2 (documental), não a Fase 1.
+- **Eliminatórias (Regulamento 8.1 — vale desde 16/11/2026, por decisão da Karine; antes a
+  Fase 1 não eliminava ninguém):** as perguntas **14 a 19** do formulário (esporte no
+  estatuto, mandato em vigor, estatuto e ata registrados, computador com câmera e
+  microfone, internet, 2h por semana) eliminam quem não responder "Sim". CNPJ aberto
+  **depois de 01/03/2026** também elimina. A eliminada **continua visível** no Ranking,
+  com a nota e o motivo, mas **sem posição e fora da Fase 2**. Pergunta em branco não
+  elimina: vira aviso.
+- **Uma lista só (Ranking):** nota, situação (Classificada / Fila de espera /
+  Eliminada), uma coluna **Problemas** com tudo o que há para conferir (eliminatórias,
+  CNPJ inválido ou repetido, campo em branco, avisos) e **todas as respostas** do
+  formulário. Clicando numa linha, a ficha; em duas ou mais, a comparação lado a lado.
+- O filtro dos documentos e da diretoria de verdade é a Fase 2 (documental).
 
 ### FASE 2 — Conferência documental  ·  *tela 3 (Documental)*
 
@@ -126,7 +130,7 @@ Inscrições (Wix)
 
 ## Princípios que não mudam
 
-1. **Fase 1 nunca exclui.** Pendência é **observação**, não eliminação.
+1. **Fase 1 elimina só pelas perguntas 14 a 19 e pela data de abertura (Regulamento 8.1).** O resto é aviso.
 2. **O filtro real é a documental (Fase 2).**
 3. **Tudo à vista.** O mentor enxerga o porquê da nota sem abrir uma por uma.
 4. **A palavra final é do mentor.** O sistema sugere; ele confirma.
@@ -139,5 +143,6 @@ Inscrições (Wix)
 | **Classificada** | Dentro do número de vagas, no ranking. |
 | **Fila de espera** | No ranking, abaixo da linha das vagas. |
 | **Atenção** | Tem uma pendência sinalizada (não exclui; confere na Fase 2). |
+| **Eliminada** | Respondeu "Não" numa das perguntas 14 a 19 ou abriu o CNPJ depois de 01/03/2026. Visível, sem posição, fora da Fase 2. |
 | **Fase 2 = Sim** | Está no grupo que vai à conferência documental. |
 | **Excluída (documental/entrevista)** | Saiu nessas fases, com o motivo registrado. |
