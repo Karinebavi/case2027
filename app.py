@@ -40,7 +40,7 @@ PAGINAS = {
     5: st.Page(entrevistas.mostrar, title="Entrevistas", icon=":material/forum:", url_path="entrevistas"),
     6: st.Page(fichas.mostrar, title="Selecionadas", icon=":material/workspace_premium:",
                url_path="selecionadas"),
-    7: st.Page(dashboard.mostrar, title="Painel", icon=":material/monitoring:", url_path="painel"),
+    7: st.Page(dashboard.mostrar, title="Relatórios", icon=":material/monitoring:", url_path="relatorios"),
 }
 _ui.PAGINAS = PAGINAS
 

@@ -8,7 +8,7 @@ BLOCOS = ["Elaboração", "Execução", "Equipe", "Receita", "Infra adm.", "Infr
 COLS_B = ["b1", "b2", "b3", "b4", "b5", "b6", "b7"]
 
 # As etapas da seleção, na ordem do processo (mesmos nomes do menu).
-FASES = ["Inscrições", "Ranking", "Documentos", "Patrocinador", "Entrevistas", "Selecionadas", "Painel"]
+FASES = ["Inscrições", "Ranking", "Documentos", "Patrocinador", "Entrevistas", "Selecionadas", "Relatórios"]
 PAGINAS = {}  # passo -> st.Page; o app.py preenche a cada execução
 
 

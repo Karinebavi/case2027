@@ -13,7 +13,7 @@ import unicodedata
 from datetime import datetime, date
 import pandas as pd
 
-from regras import regiao as regiao_mod
+from regras import localidade
 
 # Mecanismos incentivados contados nas perguntas de elaboração/execução.
 TOKENS = ["Esporte", "Cultura", "Infância", "Idoso", "PRONAS", "PRONON", "Emenda"]
@@ -268,6 +268,9 @@ def calcular(dados, mapa, hoje=None):
         if abertura and abertura > CORTE_ABERTURA:
             eliminacao.append(f"CNPJ aberto em {abertura:%d/%m/%Y}, depois de {CORTE_ABERTURA:%d/%m/%Y}")
         anos = _anos(g("data_fundacao"), ref)  # informativo (coluna "Anos")
+        # Estado e cidade padronizados (lista do IBGE): "BH", "belo horizonte - mg" e
+        # "Belo Horisonte" viram Belo Horizonte/MG. O texto original fica na base.
+        loc = localidade.local(g("cidade"), g("uf"))
 
         total = b1 + b2 + b3 + b4 + b5 + b6 + b7  # a nota aparece sempre, mesmo na eliminada
         status = "Eliminada" if eliminacao else "Em classificação"
@@ -276,14 +279,17 @@ def calcular(dados, mapa, hoje=None):
         linhas.append({
             "Entidade": _txt(g("nome_entidade")),
             "CNPJ": _txt(g("cnpj")).strip(),
-            "Cidade": _txt(g("cidade")).strip(),
-            "UF": regiao_mod.para_uf(g("uf")) or _txt(g("uf")).strip(),
-            "Região": regiao_mod.regiao_de(g("uf")) or "(não identificada)",
+            "Cidade": loc["cidade"] or _txt(g("cidade")).strip(),
+            "UF": loc["uf"] or _txt(g("uf")).strip(),
+            "Região": loc["regiao"] or "(não identificada)",
             "b1": b1, "b2": b2, "b3": b3, "b4": b4, "b5": b5, "b6": b6, "b7": b7,
             "Nota": total,
             "Status": status,
             "Motivo": motivo,
             "Anos": round(anos, 1) if anos is not None else None,
             "_data_fundacao": _txt(g("data_fundacao")),
+            "_cidade_digitada": loc["original"], "_uf_digitada": loc["uf_original"],
+            "_local_status": loc["status"], "_uf_status": loc["status_uf"],
+            "_local_sugestao": loc["sugestao"], "_codigo_ibge": loc["codigo_ibge"],
         })
     return pd.DataFrame(linhas)
