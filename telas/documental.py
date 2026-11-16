@@ -27,7 +27,7 @@ import streamlit as st
 
 import tema
 from telas import _calculo, _ui
-from regras import contato, funil, wix
+from regras import contato, funil, nuvem, wix
 from regras import processo as proc
 from regras.memoria import so_digitos
 from leitura import conferencia, ia, resumo
@@ -342,12 +342,50 @@ _LER_JUNTAS = 4          # quantas a IA lê ao mesmo tempo
 _FIM_INSCRICOES = dt.date(2027, 1, 15)
 
 
+def _quando_br(iso):
+    try:
+        return pd.to_datetime(iso, utc=True).tz_convert("America/Sao_Paulo").strftime("%d/%m/%Y às %H:%M")
+    except Exception:
+        return "—"
+
+
+def _trava():
+    """Mostra a trava da leitura e devolve True se a leitura está liberada.
+    Bloqueada por padrão: só a liberação (com confirmação) abre os botões de leitura."""
+    from regras import liberacao
+    est = liberacao.estado()
+    if est.get("liberada"):
+        c = st.columns([4, 1], vertical_alignment="center")
+        c[0].success(f"Leitura liberada em {_quando_br(est.get('quando'))} ({est.get('por', '—')}).",
+                     icon=":material/lock_open:")
+        if c[1].button("Bloquear de novo", icon=":material/lock:", key="trava_bloquear", width="stretch"):
+            liberacao.definir(False, nuvem.quem())
+            st.rerun()
+        return True
+    st.warning("A leitura dos documentos está **bloqueada**. Enquanto isso, o sistema só acompanha quem "
+               "enviou documentos; ninguém da equipe consegue mandar ler. Libere quando as inscrições "
+               f"terminarem ({_FIM_INSCRICOES:%d/%m/%Y}).", icon=":material/lock:")
+    with st.popover("Liberar a leitura", icon=":material/lock_open:"):
+        st.markdown("Ao liberar, a equipe passa a poder mandar ler os documentos (pela IA, com custo). "
+                    "Dá para bloquear de novo a qualquer momento. Fica registrado quem liberou e quando.")
+        ok = st.checkbox("As inscrições terminaram e quero liberar a leitura", key="trava_conf")
+        if st.button("Liberar agora", type="primary", disabled=not ok, key="trava_liberar"):
+            liberacao.definir(True, nuvem.quem())
+            st.session_state.pop("trava_conf", None)
+            st.rerun()
+    return False
+
+
 def _lote(linhas, estado):
-    """Leitura dos documentos — SÓ quando a Karine mandar (nunca sozinha): ela
+    """Leitura dos documentos — SÓ quando a Karine liberar e mandar (nunca sozinha):
     escolhe quantas (as mais bem colocadas primeiro) e vê o custo antes."""
     pend = sorted((l for l in linhas if l["precisa"]), key=lambda l: l["pos"])
     with st.container(border=True):
         st.markdown("**Leitura dos documentos**")
+        if not _trava():
+            if pend:
+                st.caption(f"{len(pend)} entidade(s) do pool já enviaram documentos e esperam a liberação.")
+            return
         if not pend:
             st.caption("Nenhuma entidade do pool com documentos esperando leitura.")
             return
@@ -657,11 +695,14 @@ def _documentos(dig, r, linha, reg):
     páginas, parecer completo e leitura por IA. Os arquivos ficam só na sessão."""
     arquivos = st.session_state.get(f"_arq_{dig}")
     precisa = linha["precisa"] or (linha["envio"] and not reg.get("doc_auto"))
+    from regras import liberacao
+    livre = liberacao.liberada()  # leitura só depois que a Karine liberar
+    trava = None if livre else "Leitura bloqueada: libere em Leitura dos documentos, no topo da tela."
     c = st.columns(3)
     if linha["envio"]:
         rotulo = "Analisar agora" if precisa else "Analisar de novo"
         if c[0].button(rotulo, type="primary" if precisa else "secondary", icon=":material/play_arrow:",
-                       key=f"analisar_{dig}", width="stretch"):
+                       key=f"analisar_{dig}", width="stretch", disabled=not livre, help=trava):
             with st.spinner("Baixando os documentos do Wix…"):
                 arquivos = wix.baixar_envio(linha["envio"])
             _analisar_e_guardar(dig, r, reg, arquivos, "wix", linha["como"], _versao(linha["envio"]))
@@ -683,7 +724,8 @@ def _documentos(dig, r, linha, reg):
             manual[g] = [(u.name, u.getvalue()) for u in (lst or [])]
         m = st.columns(2)
         if any(manual.values()) and m[0].button("Analisar estes arquivos", type="primary",
-                                                icon=":material/play_arrow:", key=f"manual_{dig}"):
+                                                icon=":material/play_arrow:", key=f"manual_{dig}",
+                                                disabled=not livre, help=trava):
             _analisar_e_guardar(dig, r, reg, manual, "manual", "", "manual")
         if m[1].button("Testar com documentos de exemplo", icon=":material/science:", key=f"exemplo_{dig}"):
             # Só mostra: um resultado fictício NUNCA vai para o registro da entidade.
@@ -710,7 +752,8 @@ def _documentos(dig, r, linha, reg):
     guardado = st.session_state.get("_pareceres", {}).get(dig)
     p = guardado["parecer"] if guardado and guardado["assinatura"] == conferencia.assinatura(arquivos) else None
     if p is None:
-        if st.button("Montar o parecer completo destes documentos", key=f"parecer_{dig}"):
+        if st.button("Montar o parecer completo destes documentos", key=f"parecer_{dig}",
+                     disabled=not livre, help=trava):
             with st.spinner("Lendo os documentos…"):
                 p = conferencia.analisar(arquivos, dig, r["Entidade"])
             st.session_state.setdefault("_pareceres", {})[dig] = {
@@ -843,7 +886,10 @@ def _leitura_ia(arquivos, dig, nome):
     guardado = st.session_state.get(f"_ia_{dig}")
     atual = guardado if (guardado and guardado.get("sig") == sig) else None
     if atual is None:
-        if st.button("Ler com IA", key=f"ia_btn_{dig}", icon=":material/smart_toy:"):
+        from regras import liberacao
+        if st.button("Ler com IA", key=f"ia_btn_{dig}", icon=":material/smart_toy:",
+                     disabled=not liberacao.liberada(),
+                     help=None if liberacao.liberada() else "Leitura bloqueada até a liberação."):
             with st.spinner("A IA está lendo os documentos…"):
                 res, err = ia.analisar(arquivos, nome_entidade=nome)
             st.session_state[f"_ia_{dig}"] = {"sig": sig, "res": res, "err": err}
