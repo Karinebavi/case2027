@@ -8,6 +8,8 @@ cai para os dois lados (iniciante demais ou avançada demais).
 
 Para recalibrar, edite as TABELAS abaixo. Nenhuma tela precisa mudar.
 """
+import re
+import unicodedata
 from datetime import datetime, date
 import pandas as pd
 
@@ -35,6 +37,17 @@ ELIMINATORIAS = [
 # 1 ano de funcionamento: data de abertura até 01/03/2026 (definida pela Karine em 16/11/2026;
 # o regulamento v2 cita 15/01/2026).
 CORTE_ABERTURA = date(2026, 3, 1)
+
+# O CASE é para organizações sem fins lucrativos: nome de EMPRESA (Ltda, EIRELI,
+# "sociedade limitada"; ou ME, EPP, MEI, S.A. no fim do nome) elimina na Etapa 1
+# (decisão da Karine em 16/11/2026). Na Fase 2, o Cartão CNPJ confere a natureza jurídica.
+_EMPRESA = re.compile(r"\b(ltda|eireli|sociedade limitada|microempreendedor)\b"
+                      r"|[\s\-]+(me|epp|mei|s\.?\s?a\.?|s/a)\s*\.?\s*$")
+
+
+def e_empresa(nome):
+    s = unicodedata.normalize("NFKD", _txt(nome)).encode("ascii", "ignore").decode().lower().strip()
+    return bool(_EMPRESA.search(s))
 
 # Bloco 4 — Receita bruta anual (faixas do formulário FINAL; alvo: 51 a 150 mil).
 # Curva mantida do quadro original (5, 8, 10, 3, 2), remapeada para as novas faixas.
@@ -249,6 +262,8 @@ def calcular(dados, mapa, hoje=None):
                 motivos.append(f"{texto.split('.')[0]}. não respondida")
             elif not resposta.startswith("sim"):
                 eliminacao.append(texto)
+        if e_empresa(g("nome_entidade")):
+            eliminacao.append("Empresa (Ltda/ME/EIRELI), não é organização sem fins lucrativos")
         abertura = parse_data(g("data_fundacao"))
         if abertura and abertura > CORTE_ABERTURA:
             eliminacao.append(f"CNPJ aberto em {abertura:%d/%m/%Y}, depois de {CORTE_ABERTURA:%d/%m/%Y}")

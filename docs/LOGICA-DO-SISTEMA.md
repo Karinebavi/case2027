@@ -44,7 +44,8 @@ Inscrições (Wix)
   Fase 1 não eliminava ninguém):** as perguntas **14 a 19** do formulário (esporte no
   estatuto, mandato em vigor, estatuto e ata registrados, computador com câmera e
   microfone, internet, 2h por semana) eliminam quem não responder "Sim". CNPJ aberto
-  **depois de 01/03/2026** também elimina. A eliminada **continua visível** no Ranking,
+  **depois de 01/03/2026** também elimina, e **empresa** também (nome com Ltda, EIRELI,
+  ou ME/EPP/MEI/S.A. no fim — o CASE é para organizações sem fins lucrativos). A eliminada **continua visível** no Ranking,
   com a nota e o motivo, mas **sem posição e fora da Fase 2**. Pergunta em branco não
   elimina: vira aviso.
 - **Uma lista só (Ranking):** nota, situação (Classificada / Fila de espera /
