@@ -47,7 +47,8 @@ def montar(scored, estado, pool_size, vagas):
     f["pos_pool"] = f["dig"].map(pos_pool)
 
     def rotulo(r):
-        # Fase 1 não exclui ninguém: todas chegam aqui como "Em classificação".
+        if r.get("Status") == "Eliminada":
+            return "Eliminada (Etapa 1)"
         if r["doc_status"] == "excluida":
             return "Excluída (documental)"
         if r["entrevista_status"] == "excluida":

@@ -134,7 +134,11 @@ def ficha(df, entidade, dados=None, mapa=None):
     motivo = str(r.get("Motivo", "") or "")
     if motivo:
         # Fase 1 não exclui nem zera: a pendência é só um aviso para o mentor.
-        st.warning(f"**Atenção:** {motivo}. A nota não muda por isso — confira na Fase 2 (documental).")
+        if r.get("Status") == "Eliminada":
+            st.error(f"**Eliminada na Etapa 1** (Regulamento 8.1): {motivo}. A nota aparece, mas a entidade "
+                     "fica fora do ranking e da Fase 2.")
+        else:
+            st.warning(f"**Atenção:** {motivo}. Confira na Fase 2 (documentos).")
 
     _experiencia_esportiva(dados, r.get("CNPJ", ""))
 

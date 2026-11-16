@@ -45,6 +45,10 @@ CAMPOS = [
     # "finalidade" e não "estatuto": no formulário de 2027 a pergunta 16 (estatuto e ata
     # registrados em cartório) vem antes da 14 e também tem a palavra "estatuto".
     ("Eliminatórias (Sim/Não)", "estatuto", "Estatuto com finalidade esportiva", True, ["finalidade"]),
+    # Regulamento 8.1: as perguntas 14 a 19 são eliminatórias (incluídas 15 e 16 em 16/11/2026).
+    ("Eliminatórias (Sim/Não)", "mandato", "Mandato da diretoria em vigor", True, ["mandato em vigor", "mandato"]),
+    ("Eliminatórias (Sim/Não)", "registro", "Estatuto e ata registrados em cartório", True,
+     ["registrados em cartório", "registrados em cartorio", "cartório", "cartorio"]),
     ("Eliminatórias (Sim/Não)", "computador", "Computador com câmera e microfone", True, ["computador", "câmera", "camera"]),
     ("Eliminatórias (Sim/Não)", "internet", "Internet para as reuniões", True, ["internet"]),
     ("Eliminatórias (Sim/Não)", "disponibilidade", "Disponibilidade de 2h por semana (10 meses)", True, ["disponibilidade", "1h30", "2h por semana", "2h semanais"]),

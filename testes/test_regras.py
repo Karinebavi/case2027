@@ -26,22 +26,52 @@ def _ranking(dados, mapa):
     return classificacao.classificar(pontuacao.calcular(dados, mapa, hoje=HOJE), vagas=10)
 
 
-def test_fase1_ninguem_e_excluido(base):
-    clf = _ranking(*base)
-    assert (clf["Status"] == "Em classificação").all()
-    assert clf["Posição"].notna().all()
+ELIMINATORIAS = ("estatuto", "mandato", "registro", "computador", "internet", "disponibilidade")
 
 
-def test_pendencia_vira_atencao_e_continua_no_ranking(base):
+def _apta(dados, mapa, i=0):
+    """Deixa a inscrição i respondendo 'Sim' em todas as eliminatórias e com CNPJ antigo."""
+    for campo in ELIMINATORIAS:
+        if mapa.get(campo):
+            dados.loc[i, mapa[campo]] = "Sim"
+    dados.loc[i, mapa["data_fundacao"]] = "2015-01-01"
+
+
+def test_quem_atende_as_eliminatorias_fica_no_ranking(base):
     dados, mapa = base
-    for campo in ("computador", "internet", "disponibilidade"):
-        dados.loc[0, mapa[campo]] = "Não"
-    dados.loc[0, mapa["data_fundacao"]] = "2026-06-01"  # menos de 1 ano
+    _apta(dados, mapa)
     linha = _ranking(dados, mapa).loc[0]
-    assert "Sem internet" in linha["Motivo"]
-    assert "Menos de 1 ano" in linha["Motivo"]
-    assert pd.notna(linha["Posição"])
-    assert linha["Nota"] > 0  # pendência não zera a nota
+    assert linha["Status"] == "Em classificação" and pd.notna(linha["Posição"])
+
+
+@pytest.mark.parametrize("campo,numero", [("computador", "17."), ("internet", "18."), ("disponibilidade", "19.")])
+def test_nao_numa_eliminatoria_elimina_mas_continua_visivel(base, campo, numero):
+    # Regulamento 8.1: perguntas 14 a 19 são eliminatórias (decisão da Karine em 16/11/2026)
+    dados, mapa = base
+    _apta(dados, mapa)
+    dados.loc[0, mapa[campo]] = "Não"
+    linha = _ranking(dados, mapa).loc[0]
+    assert linha["Status"] == "Eliminada" and linha["Situação"] == "Eliminada"
+    assert pd.isna(linha["Posição"])            # sem posição no ranking
+    assert linha["Motivo"].startswith(numero)   # o motivo diz qual pergunta
+    assert linha["Nota"] > 0                    # a nota continua aparecendo
+
+
+def test_cnpj_aberto_depois_do_corte_elimina(base):
+    dados, mapa = base
+    _apta(dados, mapa)
+    dados.loc[0, mapa["data_fundacao"]] = "2026-06-01"
+    assert _ranking(dados, mapa).loc[0]["Status"] == "Eliminada"
+    dados.loc[0, mapa["data_fundacao"]] = "2026-03-01"  # no dia do corte ainda vale
+    assert _ranking(dados, mapa).loc[0]["Status"] == "Em classificação"
+
+
+def test_pergunta_em_branco_nao_elimina_vira_atencao(base):
+    dados, mapa = base
+    _apta(dados, mapa)
+    dados.loc[0, mapa["computador"]] = ""
+    linha = _ranking(dados, mapa).loc[0]
+    assert linha["Status"] == "Em classificação" and "17. não respondida" in linha["Motivo"]
 
 
 def test_pergunta_que_nao_existe_no_formulario_pontua_zero(base):
