@@ -53,6 +53,7 @@ if not auth.esta_logado():
     st.stop()
 
 # ---------- dados: base de inscrições e estado do processo ----------
+importar.atualizar_se_antigo()  # Wix: se a última busca tem mais de 1 hora, busca agora
 _calculo.reler_se_preciso()
 if "dados" not in st.session_state:
     importar._carregar_base_para_sessao()
