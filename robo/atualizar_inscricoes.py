@@ -27,8 +27,10 @@ from regras import atualizacao  # noqa: E402
 def main(simular=False):
     r = atualizacao.atualizar(simular=simular, origem="robô")
     if r.get("erro") in ("Wix não configurado", "banco não configurado"):
-        print(f"::notice::{r['erro']} — cadastre os Secrets do GitHub (veja o topo do workflow).")
-        return 0
+        # Falha DE PROPÓSITO: sem as chaves o robô não busca inscrições nem mantém o banco
+        # acordado (ele pausa em 7 dias). Falhando, o GitHub avisa por e-mail.
+        print(f"::error::{r['erro']} — cadastre os Secrets do GitHub (veja o topo do workflow).")
+        return 1
     if not r.get("ok"):
         print(f"::error::{r.get('erro')}")
         return 1
