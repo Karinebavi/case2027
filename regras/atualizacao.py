@@ -42,7 +42,10 @@ def atualizar(simular=False, origem="robô"):
     try:
         df, _info = wix.sincronizar()
     except Exception as erro:
-        r.update(erro=f"não consegui buscar no Wix ({type(erro).__name__})")
+        # o motivo de verdade (ex.: "HTTP 401 — confira a API key"); as mensagens do
+        # wix.py não trazem dados pessoais nem chaves
+        motivo = str(erro).split(" Disponíveis:")[0][:200] or type(erro).__name__
+        r.update(erro=f"não consegui buscar no Wix — {motivo}")
         _status(r, simular)
         return r
     r["no_wix"] = len(df)
