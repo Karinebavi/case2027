@@ -133,7 +133,7 @@ def mostrar():
             disp[b] = disp["dig"].map(lambda d, i=i: conf[d][i] if d in conf else "")
     resp_cols = []
     if todas_resp:
-        por_dig = {so_digitos(r.get("cnpj", "")): r for _, r in dados.iterrows()}
+        por_dig = {so_digitos(r.get("cnpj", "")): r.to_dict() for _, r in dados.iterrows()}
         for chave, rotulo in RESPOSTAS:
             disp[rotulo] = disp["dig"].map(lambda d, k=chave: str((por_dig.get(d) or {}).get(k, "") or "").strip())
             resp_cols.append(rotulo)
@@ -190,7 +190,7 @@ def mostrar():
 def _comparar(sel, dados, mapa):
     """Lado a lado: nota, situação, problemas, pontos por bloco e todas as respostas."""
     conf = _conferencia(dados, mapa)
-    por_dig = {so_digitos(r.get("cnpj", "")): r for _, r in dados.iterrows()}
+    por_dig = {so_digitos(r.get("cnpj", "")): r.to_dict() for _, r in dados.iterrows()}
     nomes = [str(n) for n in sel["Entidade"]]
     nomes = [n if nomes.count(n) == 1 else f"{n} ({i + 1})" for i, n in enumerate(nomes)]
     linhas = {"Nota": [int(x) for x in sel["Nota"]], "Situação": list(sel["Situação"]),
