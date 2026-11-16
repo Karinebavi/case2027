@@ -50,7 +50,7 @@ def test_pendencia_diz_qual_campo_esta_em_branco():
     dados = pd.DataFrame({"cnpj": [cnpj.formatar(CERTO)], "nome_entidade": ["A"], "data_fundacao": [""]})
     v = validacao.validar(dados, {"cnpj": "cnpj", "nome_entidade": "nome_entidade",
                                    "data_fundacao": "data_fundacao"})
-    assert v["pendencias"].iloc[0]["Problema"] == "em branco: Data de fundação"
+    assert v["pendencias"].iloc[0]["Problema"] == "em branco: Data de abertura da entidade"
 
 
 def test_robo_aceita_chaves_coladas_com_aspas(monkeypatch):
