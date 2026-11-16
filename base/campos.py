@@ -20,7 +20,9 @@ CAMPOS = [
     ("Identificação", "cnpj_confirmacao", "CNPJ (confirmação)", False,
      ["confirme o cnpj", "confirmação do cnpj", "confirmacao do cnpj", "repita o cnpj", "confirme seu cnpj"]),
     ("Identificação", "cnpj", "CNPJ", True, ["cnpj"]),
-    ("Identificação", "data_fundacao", "Data de fundação", True, ["fundação", "fundacao"]),
+    # No formulário 2027 a pergunta é "6. Data de Abertura da Entidade" (antes: "fundação").
+    ("Identificação", "data_fundacao", "Data de fundação", True,
+     ["fundação", "fundacao", "data de abertura", "abertura da entidade"]),
     ("Identificação", "uf", "Estado (UF)", True, ["estado"]),
     ("Identificação", "cidade", "Cidade", False, ["cidade"]),
     # Código do envio no Wix: liga a inscrição aos documentos anexados nela mesma.
