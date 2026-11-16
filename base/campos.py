@@ -21,7 +21,7 @@ CAMPOS = [
      ["confirme o cnpj", "confirmação do cnpj", "confirmacao do cnpj", "repita o cnpj", "confirme seu cnpj"]),
     ("Identificação", "cnpj", "CNPJ", True, ["cnpj"]),
     # No formulário 2027 a pergunta é "6. Data de Abertura da Entidade" (antes: "fundação").
-    ("Identificação", "data_fundacao", "Data de fundação", True,
+    ("Identificação", "data_fundacao", "Data de abertura da entidade", True,
      ["fundação", "fundacao", "data de abertura", "abertura da entidade"]),
     ("Identificação", "uf", "Estado (UF)", True, ["estado"]),
     ("Identificação", "cidade", "Cidade", False, ["cidade"]),
@@ -93,3 +93,18 @@ def grupos():
         if grupo not in vistos:
             vistos.append(grupo)
     return vistos
+
+
+# Número de cada pergunta no formulário publicado (www.case.org.br/inscricoes2027 —
+# "CASE 2027 — Inscrição, Etapa 1 — Nova versão"), para as telas mostrarem igual ao Wix.
+NUMERO_FORMULARIO = {
+    "responsavel": "1", "email": "2", "whatsapp": "3", "cnpj": "5", "data_fundacao": "6",
+    "nome_entidade": "7", "cidade": "10", "uf": "11", "email_institucional": "12", "presidente": "13",
+    "estatuto": "14", "mandato": "15", "registro": "16", "computador": "17", "internet": "18",
+    "disponibilidade": "19", "p18": "21", "p19": "22", "p20_lie": "23", "p21": "24", "p22": "25",
+    "p23": "26", "p24": "27", "canais": "28", "site": "28.1", "instagram": "28.2", "facebook": "28.3",
+    "outra_rede": "28.4", "projetos_3anos": "29", "beneficiarios": "30", "modalidades": "31",
+    "outra_modalidade": "31.1",
+}
+# Bloco de nota que cada pergunta pontua (coluna b1..b7 do cálculo; máximo 10 cada).
+BLOCO_DA_PERGUNTA = {"p18": "b1", "p19": "b2", "p21": "b3", "p22": "b4", "p23": "b5", "p24": "b6", "canais": "b7"}

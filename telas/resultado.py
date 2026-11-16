@@ -32,9 +32,27 @@ SITUACOES = ["Classificada", "Fila de espera", "Eliminada"]
 CORES_SITUACAO = {k: f"background-color:{bg};color:{fg}" for k, (bg, fg) in tema.SEMAFORO.items()}
 BLOCO_COL = {"b1": "Elaboração", "b2": "Execução", "b3": "Equipe", "b4": "Receita",
              "b5": "Infra adm.", "b6": "Infra esp.", "b7": "Digital"}
-# Respostas que viram colunas (sem os contatos pessoais — esses ficam na tela Selecionadas).
-_FORA = {"nome_entidade", "cnpj", "cidade", "uf", "id_envio", "cnpj_confirmacao"}
-RESPOSTAS = [(k, r) for g, k, r, _o, _d in campos_def.CAMPOS if g != "Contato" and k not in _FORA]
+# Respostas que viram colunas, NA ORDEM E COM O NÚMERO do formulário do Wix
+# (www.case.org.br/inscricoes2027). Ficam de fora os contatos pessoais (estão na tela
+# Selecionadas) e o que já aparece no começo da linha (nome, CNPJ, cidade, UF).
+_FORA = {"responsavel", "email", "whatsapp", "cnpj", "nome_entidade", "cidade", "uf",
+         "email_institucional", "presidente"}
+_ROTULO = {k: r for _g, k, r, _o, _d in campos_def.CAMPOS}
+
+
+def _ordem(num):
+    a, _, b = num.partition(".")
+    return int(a), int(b or 0)
+
+
+# (chave, "21. Elaboração — ...", coluna do bloco de nota ou None)
+RESPOSTAS = sorted(((k, f"{n}. {_ROTULO[k]}", campos_def.BLOCO_DA_PERGUNTA.get(k))
+                    for k, n in campos_def.NUMERO_FORMULARIO.items() if k not in _FORA),
+                   key=lambda x: _ordem(campos_def.NUMERO_FORMULARIO[x[0]]))
+
+
+def _col_pontos(chave):
+    return f"{campos_def.NUMERO_FORMULARIO[chave]} · pontos"
 
 
 def mostrar():
@@ -81,8 +99,9 @@ def mostrar():
                               icon=":material/search:")
         ver = st.segmented_control("Ver", ["Todas", "Fase 2", "Com problema", "Eliminadas"], default="Todas",
                                    key="ranking_ver") or "Todas"
-        mostrar_col = st.pills("Mostrar também", ["Todas as respostas", "Pontos por bloco"],
-                               selection_mode="multi", default=["Todas as respostas"], key="ranking_colunas")
+        todas_resp = st.toggle("Respostas e pontos", value=True, key="ranking_respostas",
+                               help="Todas as respostas, na numeração do formulário, com os pontos ao lado "
+                                    "de cada pergunta que vale nota.")
         with st.popover("Filtros", icon=":material/filter_list:"):
             situacoes = st.multiselect("Situação", SITUACOES, placeholder="Todas")
             regioes = st.multiselect("Região", sorted(r for r in f["Região"].unique() if r), placeholder="Todas")
@@ -98,8 +117,6 @@ def mostrar():
                            icon=":material/download:",
                            help="Todas as organizações, com as vagas em destaque e a coluna "
                                 "'Interesse do patrocinador'.")
-    todas_resp = "Todas as respostas" in (mostrar_col or [])
-    por_bloco = "Pontos por bloco" in (mostrar_col or [])
 
     # Ordem: quem está no ranking (pela posição) e, no fim, as eliminadas (pela nota)
     f["_ord"] = [(1 if el else 0, p if p not in (None, "") and str(p) != "nan" else 10 ** 6, -n)
@@ -126,21 +143,27 @@ def mostrar():
 
     disp = vista.copy()
     disp["Fase 2"] = disp["em_pool"].map(lambda x: "Sim" if x else "")
-    bloco_cols = list(BLOCO_COL) if por_bloco else []
-    if por_bloco:
-        conf = _conferencia(dados, mapa)
-        for i, b in enumerate(BLOCO_COL):
-            disp[b] = disp["dig"].map(lambda d, i=i: conf[d][i] if d in conf else "")
-    resp_cols = []
+    resp_cols, pts_cols, nao_reconhecida = [], [], {}
     if todas_resp:
         por_dig = {so_digitos(r.get("cnpj", "")): r.to_dict() for _, r in dados.iterrows()}
-        for chave, rotulo in RESPOSTAS:
+        conf = _conferencia(dados, mapa)
+        for chave, rotulo, bloco in RESPOSTAS:
             disp[rotulo] = disp["dig"].map(lambda d, k=chave: str((por_dig.get(d) or {}).get(k, "") or "").strip())
             resp_cols.append(rotulo)
-    colunas = (["Posição", "Entidade", "Nota", "Situação", "Fase 2", "Problemas", "Cidade", "UF", "Anos"]
-               + bloco_cols + resp_cols)
-    disp = disp[colunas].rename(columns={**BLOCO_COL, "Anos": "Tempo (anos)"})
-    disp["Posição"] = pd.to_numeric(disp["Posição"], errors="coerce").astype("Int64")  # eliminada: em branco
+            if bloco:  # pergunta que vale nota: a coluna de pontos vem logo ao lado
+                col = _col_pontos(chave)
+                disp[col] = disp[bloco].astype(int)
+                resp_cols.append(col)
+                pts_cols.append(col)
+                i = int(bloco[1:]) - 1  # resposta que a régua não reconhece: marcar em vermelho
+                nao_reconhecida[rotulo] = [str((conf.get(d) or [""] * 7)[i]).startswith("0 · não reconhecida")
+                                           for d in disp["dig"]]
+    colunas = ["Posição", "Entidade", "Nota", "Situação", "Fase 2", "Problemas", "Cidade", "UF", "Anos"] + resp_cols
+    disp = disp[colunas].rename(columns={"Anos": "Tempo (anos)"})
+    # Eliminada não tem posição: mostra "—". Texto com espaços à esquerda para a ordem
+    # continuar certa ao clicar no título (" 2" vem antes de "10"; "—" vai para o fim).
+    disp["Posição"] = pd.to_numeric(disp["Posição"], errors="coerce").map(
+        lambda v: "—" if pd.isna(v) else f"{int(v):>3}")
 
     def _cor_sit(val):
         return CORES_SITUACAO.get(val, "")
@@ -148,34 +171,39 @@ def mostrar():
     def _cor_pool(val):
         return f"background-color:{tema.LAVANDA};color:{tema.ROXO_ESCURO};font-weight:600" if val == "Sim" else ""
 
-    def _cor_conferencia(val):
-        cor = tema.COR_STATUS["vermelho"]
-        return f"background-color:{cor[0]};color:{cor[1]}" if str(val).startswith("0 · não reconhecida") else ""
+    vermelho = tema.COR_STATUS["vermelho"]
+
+    def _cor_nao_reconhecida(col):
+        marcas = nao_reconhecida.get(col.name, [False] * len(col))
+        return [f"background-color:{vermelho[0]};color:{vermelho[1]}" if m else "" for m in marcas]
 
     estilo = disp.style.map(_cor_sit, subset=["Situação"]).map(_cor_pool, subset=["Fase 2"]) \
         .format({"Tempo (anos)": "{:.1f}"}, na_rep="")
-    blocos_vis = [c for c in BLOCO_COL.values() if c in disp.columns]
-    if blocos_vis:
-        estilo = estilo.map(_cor_conferencia, subset=blocos_vis)
+    if nao_reconhecida:
+        estilo = estilo.apply(_cor_nao_reconhecida, subset=list(nao_reconhecida))
     col_cfg = {
-        "Posição": st.column_config.NumberColumn("Posição", width="small", pinned=True),
+        "Posição": st.column_config.TextColumn("Posição", width="small", pinned=True,
+                                               help="Eliminadas não têm posição (—)."),
         "Entidade": st.column_config.TextColumn("Entidade", width="large", pinned=True),
         "Nota": st.column_config.ProgressColumn("Nota", min_value=0, max_value=70, format="%d", width="small"),
         "Fase 2": st.column_config.TextColumn("Fase 2", width="small"),
         "Problemas": st.column_config.TextColumn("Problemas", width="large",
                                                  help="Eliminatórias, CNPJ, campos em branco e avisos — tudo junto."),
     }
-    for rot in blocos_vis:
-        col_cfg[rot] = st.column_config.TextColumn(rot, width="medium",
-                                                   help="Pontos deste bloco (máx. 10) · o que a entidade respondeu")
     for rot in resp_cols:
-        col_cfg[rot] = st.column_config.TextColumn(rot, width="medium")
+        if rot in pts_cols:
+            col_cfg[rot] = st.column_config.ProgressColumn(rot, min_value=0, max_value=10, format="%d",
+                                                           width="small",
+                                                           help="Pontos que esta resposta deu (de 0 a 10).")
+        else:
+            col_cfg[rot] = st.column_config.TextColumn(rot, width="medium")
     altura = min(36 * (len(disp) + 1) + 4, 640)
     sel = st.dataframe(estilo, width="stretch", hide_index=True, height=altura, column_config=col_cfg,
                        on_select="rerun", selection_mode="multi-row", key="ranking_tabela")
-    if blocos_vis:
-        st.caption("Em vermelho: resposta que a régua não reconhece (pontuou 0) — confira a opção no "
-                   "formulário do Wix.")
+    if todas_resp:
+        st.caption("As perguntas seguem a numeração do formulário. Ao lado de cada pergunta que vale nota "
+                   "(21, 22, 24 a 28), a coluna “pontos” mostra quanto aquela resposta deu, de 0 a 10. "
+                   "Em vermelho: resposta que a régua não reconhece (pontuou 0) — confira no formulário do Wix.")
 
     # ----------------------- ficha (1 linha) ou comparação (2+) -----------------------
     linhas = sel.selection.rows if sel else []
@@ -189,22 +217,23 @@ def mostrar():
 
 
 def _comparar(sel, dados, mapa):
-    """Lado a lado: nota, situação, problemas, pontos por bloco e todas as respostas."""
-    conf = _conferencia(dados, mapa)
+    """Lado a lado: nota, situação, problemas e cada resposta com os pontos que deu."""
     por_dig = {so_digitos(r.get("cnpj", "")): r.to_dict() for _, r in dados.iterrows()}
     nomes = [str(n) for n in sel["Entidade"]]
     nomes = [n if nomes.count(n) == 1 else f"{n} ({i + 1})" for i, n in enumerate(nomes)]
     linhas = {"Nota": [int(x) for x in sel["Nota"]], "Situação": list(sel["Situação"]),
               "Problemas": [p or "—" for p in sel["Problemas"]]}
-    for i, rot in enumerate(BLOCO_COL.values()):
-        linhas[f"Pontos · {rot}"] = [(conf.get(d) or [""] * 7)[i] for d in sel["dig"]]
-    for chave, rotulo in RESPOSTAS:
-        linhas[rotulo] = [str((por_dig.get(d) or {}).get(chave, "") or "").strip() or "—" for d in sel["dig"]]
+    for chave, rotulo, bloco in RESPOSTAS:
+        valores = []
+        for d, (_, linha) in zip(sel["dig"], sel.iterrows()):
+            resp = str((por_dig.get(d) or {}).get(chave, "") or "").strip() or "—"
+            valores.append(f"{int(linha[bloco])} pts · {resp}" if bloco else resp)
+        linhas[rotulo] = valores
     tabela = pd.DataFrame(linhas, index=nomes).T
     with st.container(border=True):
         st.subheader(f"Comparando {len(nomes)} entidades")
-        st.caption("Na ordem: nota, situação, problemas, pontos de cada bloco (pontos · resposta) e todas as "
-                   "respostas do formulário.")
+        st.caption("Nota, situação, problemas e cada pergunta na numeração do formulário. Nas que valem nota, "
+                   "os pontos aparecem antes da resposta.")
         st.dataframe(tabela, width="stretch", height=min(36 * (len(tabela) + 1) + 4, 900),
                      column_config={"_index": st.column_config.TextColumn("Pergunta", width="medium",
                                                                           pinned=True)})
