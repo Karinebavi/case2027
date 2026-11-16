@@ -22,8 +22,9 @@ jobs:
           KEY: ${{ secrets.SUPABASE_KEY }}
         run: |
           if [ -z "$URL" ] || [ -z "$KEY" ]; then
-            echo "::notice::Cadastre SUPABASE_URL e SUPABASE_KEY nos Secrets do GitHub (docs/REVISAO-AUTOMATICA.md)."
-            exit 0
+            # Falha de propósito: sem as chaves ninguém cutuca o banco e ele pausa em 7 dias.
+            echo "::error::Cadastre SUPABASE_URL e SUPABASE_KEY nos Secrets do GitHub — sem elas o banco pausa."
+            exit 1
           fi
           base="${URL%/}"; base="${base%/rest/v1}"
           extra=()

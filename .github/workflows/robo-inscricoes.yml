@@ -6,7 +6,7 @@
 # Precisa (GitHub > Settings > Secrets and variables > Actions):
 #   Secrets:   WIX_API_KEY, WIX_SITE_ID, WIX_FORM_ID, SUPABASE_URL, SUPABASE_KEY
 #   Variable:  APP_URL  (o endereço do sistema online, ...streamlit.app)
-# Sem eles, cada passo só avisa e não falha.
+# Sem eles o robô FALHA de propósito (o GitHub avisa por e-mail): sem as chaves o banco pausa.
 # O registro do GitHub é público: o robô só mostra contagens, nunca nomes ou CNPJ.
 name: Robô — inscrições do Wix e sistema acordado
 
@@ -47,6 +47,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # Python fixo: no Python mais novo do servidor o navegador automático não instala.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: Abrir o sistema online (e acordar se estiver dormindo)
         env:
           APP_URL: ${{ vars.APP_URL }}
