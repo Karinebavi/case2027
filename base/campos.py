@@ -15,6 +15,10 @@ Editar aqui é fácil e não mexe em nenhuma tela.
 # (grupo, chave, rótulo, obrigatório, dicas)
 CAMPOS = [
     ("Identificação", "nome_entidade", "Nome da entidade", True, ["nome completo da entidade", "nome da entidade"]),
+    # A confirmação vem ANTES do CNPJ: assim ela pega a coluna "Confirme o CNPJ"
+    # e a dica genérica "cnpj" do campo seguinte não a confunde com o CNPJ.
+    ("Identificação", "cnpj_confirmacao", "CNPJ (confirmação)", False,
+     ["confirme o cnpj", "confirmação do cnpj", "confirmacao do cnpj", "repita o cnpj", "confirme seu cnpj"]),
     ("Identificação", "cnpj", "CNPJ", True, ["cnpj"]),
     ("Identificação", "data_fundacao", "Data de fundação", True, ["fundação", "fundacao"]),
     ("Identificação", "uf", "Estado (UF)", True, ["estado"]),

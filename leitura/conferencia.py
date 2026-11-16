@@ -12,7 +12,7 @@ import hashlib
 from leitura import cnpj_online as _cnpj
 from leitura import parecer as _parecer
 from leitura import texto as _texto
-from leitura.campos import so_digitos
+from leitura.campos import _valida_cnpj, so_digitos
 from leitura.documento import Documento
 
 try:
@@ -61,11 +61,55 @@ def analisar(arquivos, cnpj_inscricao=None, nome_inscricao=None, progresso=None,
     if progresso:
         progresso("Consultando o CNPJ e conferindo as regras…", 0.97)
     cnpj = so_digitos(cnpj_inscricao) or None
+    invalido = bool(cnpj) and (len(cnpj) != 14 or _valida_cnpj(cnpj) is False)  # None = sem como validar
+    if invalido:
+        # CNPJ digitado errado na inscrição: comparar os documentos com ele daria
+        # tudo como "de outra entidade". Usa o CNPJ do próprio Cartão CNPJ (o
+        # parecer acha sozinho) — inclusive para consultar a Receita.
+        cnpj = so_digitos(_parecer.montar(docs, None, nome_inscricao, data_ref=data_ref).get("cnpj")) or None
     api = _cnpj.consultar(cnpj) if cnpj else None
     p = _parecer.montar(docs, cnpj, nome_inscricao, data_ref=data_ref, api=api)
+    p["cnpj_inscricao_invalido"] = invalido
     p["ocr_disponivel"] = _texto.ocr_disponivel()
     p["sem_texto"] = [d.arquivo for d in docs if d.sem_texto]
     return p
+
+
+def ia_ligada():
+    """A leitura principal pela IA está configurada (Secrets [ia] com provedor claude + chave)?"""
+    from leitura import ia
+    return ia.provedor_ativo() == "claude"
+
+
+def analisar_ia(arquivos, cnpj_inscricao=None, nome_inscricao=None, data_inscricao=None, cidade_uf=None):
+    """Leitura pela IA (o PDF inteiro, como imagem) + regras da conferência.
+    Devolve (resumo_compacto, para_salvar, info) ou (None, None, info) se a IA
+    não estiver ligada ou falhar — aí a tela usa analisar() (OCR + palavras)."""
+    from leitura import ia, leitor_ia, regras_ia, resumo_ia, triagem
+    if not ia_ligada():
+        return None, None, {"erro": "IA desligada"}
+    cfg = ia._cfg()
+    modelo = cfg.get("modelo_documentos") or leitor_ia.MODELO_PADRAO
+    # 1) Triagem: o que fugir do padrão (convite, pauta, contrato, planilha...) não segue.
+    tri, custo_tri = triagem.triar(arquivos, cfg["anthropic_api_key"])
+    passam = triagem.so_os_que_passam(arquivos, tri)
+    if not any(passam.values()):
+        # Nenhum arquivo é cartão, estatuto ou ata: nem faz a leitura completa (sem custo).
+        leitura = {"paginas": [], "entidade": {}, "cartao": None, "estatuto": None, "outros_estatutos": [],
+                   "atas": [], "outros_selos": [], "_fora": [], "_triagem": tri,
+                   "observacoes": ["Nenhum arquivo passou na triagem (nenhum é cartão CNPJ, estatuto ou ata). "
+                                   "A leitura completa não foi feita."]}
+        info = {"modelo": None, "segundos": 0, "custo_usd": custo_tri, "erro": None, "so_triagem": True}
+    else:
+        # 2) Leitura completa só do que passou.
+        leitura, info = leitor_ia.ler(passam, cfg["anthropic_api_key"], modelo=modelo, entidade=nome_inscricao)
+        if leitura is None:
+            return None, None, info
+        leitura["_triagem"] = tri
+        info["custo_usd"] = round((info.get("custo_usd") or 0) + custo_tri, 4)
+    av = regras_ia.avaliar(leitura, cnpj=cnpj_inscricao, data_inscricao=data_inscricao, cidade_uf=cidade_uf)
+    info["leitura"] = leitura  # guardada no processo para o relatório (sem pagar nova leitura)
+    return resumo_ia.compacto(av, leitura, info), resumo_ia.para_salvar(av, info), info
 
 
 def criterios(parecer):

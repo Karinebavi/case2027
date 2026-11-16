@@ -21,13 +21,12 @@ ASSUNTO = "CASE 2027 — Instituto Imaginação"
 
 
 def mostrar():
-    st.title("6 · Fichas (Fase 4)")
     _ui.cabecalho(6, "Veja as selecionadas em cartões com os contatos (e-mail/WhatsApp) e envie "
                      "o retorno para as que não passaram.")
 
     dados = st.session_state.get("dados")
     if dados is None or not st.session_state.get("mapa_ok"):
-        st.info("Importe um CSV na tela 1 · Importar para começar.")
+        st.info("Ainda não há inscrições. Elas chegam sozinhas do Wix na etapa Inscrições.")
         return
 
     mapa = st.session_state["mapa"]

@@ -1,0 +1,77 @@
+# Robô do CASE 2027 — de 2 em 2 horas, sozinho e de graça (não usa IA):
+#  1. busca as inscrições novas no Wix e soma à base (robo/atualizar_inscricoes.py);
+#  2. com isso o banco (Supabase) fica em uso e não pausa;
+#  3. abre o sistema online num navegador, para o Streamlit não "dormir".
+#
+# Precisa (GitHub > Settings > Secrets and variables > Actions):
+#   Secrets:   WIX_API_KEY, WIX_SITE_ID, WIX_FORM_ID, SUPABASE_URL, SUPABASE_KEY
+#   Variable:  APP_URL  (o endereço do sistema online, ...streamlit.app)
+# Sem eles, cada passo só avisa e não falha.
+# O registro do GitHub é público: o robô só mostra contagens, nunca nomes ou CNPJ.
+name: Robô — inscrições do Wix e sistema acordado
+
+on:
+  schedule:
+    - cron: "17 */2 * * *"   # de 2 em 2 horas
+  workflow_dispatch:          # botão "Run workflow" para rodar na hora
+
+permissions:
+  contents: read
+
+concurrency:
+  group: robo-inscricoes
+  cancel-in-progress: false
+
+jobs:
+  inscricoes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Instalar
+        run: pip install -q -r requirements.txt
+      - name: Buscar inscrições novas no Wix
+        env:
+          WIX_API_KEY: ${{ secrets.WIX_API_KEY }}
+          WIX_SITE_ID: ${{ secrets.WIX_SITE_ID }}
+          WIX_FORM_ID: ${{ secrets.WIX_FORM_ID }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python robo/atualizar_inscricoes.py
+
+  acordar-sistema:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Abrir o sistema online (e acordar se estiver dormindo)
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+        run: |
+          if [ -z "$APP_URL" ]; then
+            echo "::notice::Cadastre a variável APP_URL (endereço do sistema online) para mantê-lo acordado."
+            exit 0
+          fi
+          pip install -q playwright==1.48.0
+          python -m playwright install --with-deps chromium > /dev/null
+          python - <<'PY'
+          import os
+          from playwright.sync_api import sync_playwright
+          url = os.environ["APP_URL"]
+          with sync_playwright() as p:
+              b = p.chromium.launch()
+              pg = b.new_page()
+              pg.goto(url, wait_until="domcontentloaded", timeout=120000)
+              pg.wait_for_timeout(8000)
+              botao = pg.get_by_role("button", name="Yes, get this app back up!")
+              if botao.count():
+                  botao.first.click()
+                  print("O sistema estava dormindo: acordei.")
+                  pg.wait_for_timeout(60000)
+              else:
+                  print("O sistema está acordado.")
+              b.close()
+          PY

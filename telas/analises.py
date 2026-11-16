@@ -15,13 +15,12 @@ from regras import processo as proc
 
 
 def mostrar():
-    st.title("4 · Análises")
     _ui.cabecalho(4, "Marque o interesse do patrocinador nas organizações da Fase 2 — direto na "
                      "tabela ou subindo a planilha que ele preencheu.")
 
     dados = st.session_state.get("dados")
     if dados is None or not st.session_state.get("mapa_ok"):
-        st.info("Importe um CSV na tela 1 · Importar para usar as análises.")
+        st.info("Ainda não há inscrições. Elas chegam sozinhas do Wix na etapa Inscrições.")
         return
 
     mapa = st.session_state["mapa"]

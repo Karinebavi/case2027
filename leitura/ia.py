@@ -71,6 +71,9 @@ def _cfg():
     return {
         "provedor": prov,
         "modelo": modelo,
+        # Modelo da leitura PRINCIPAL dos documentos (leitura/leitor_ia.py), separado
+        # do modelo do botão de apoio acima.
+        "modelo_documentos": cfg.get("modelo_documentos") or os.environ.get("IA_MODELO_DOCUMENTOS") or "",
         "anthropic_api_key": cfg.get("anthropic_api_key") or os.environ.get("ANTHROPIC_API_KEY") or "",
         "ollama_url": str(cfg.get("ollama_url") or os.environ.get("OLLAMA_URL") or "http://localhost:11434").rstrip("/"),
     }
