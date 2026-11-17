@@ -136,6 +136,8 @@ def _eixo(ax):
     ax.spines["left"].set_color("#CCCCCC")
     ax.spines["bottom"].set_color("#CCCCCC")
     ax.tick_params(colors="#444444", labelsize=8)
+    from matplotlib.ticker import MaxNLocator
+    ax.yaxis.set_major_locator(MaxNLocator(integer=True))  # contagens: só números inteiros
 
 
 def _barras(rotulos, valores, titulo, cor=ROXO, horizontal=False, xlabel="", ylabel="Inscrições"):
@@ -171,101 +173,76 @@ def gerar(w, filtros_txt, total_base):
     pdf.cell(0, 10, "CASE 2027", new_x="LMARGIN", new_y="NEXT")
     pdf.set_x(14)
     pdf.set_font("dj", "", 12)
-    pdf.cell(0, 7, "Relatório técnico das inscrições · Etapa 1", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 7, "Relatório das inscrições · Etapa 1", new_x="LMARGIN", new_y="NEXT")
     pdf.set_y(54)
     _texto(pdf, f"Gerado em {datetime.now():%d/%m/%Y às %H:%M} · Instituto Imaginação", 9, CINZA)
     _texto(pdf, f"Recorte: {len(w)} de {total_base} inscrições · Filtros: {filtros_txt}", 9, CINZA)
 
     # ---------------- 1. resumo
-    _secao(pdf, "1. Resumo")
-    r = rd.resumo(w)
-    _tabela(pdf, pd.DataFrame({"Indicador": list(r), "Valor": [_fmt(v) for v in r.values()]}), larguras=(120, 62))
-
-    # ---------------- 2. notas
-    _secao(pdf, "2. Notas (0 a 70)")
-    _sub(pdf, "Estatística descritiva")
-    _tabela(pdf, rd.tabela_notas(w), larguras=(80, 51, 51))
+    _secao(pdf, "Resumo")
     em = w[w["Situação"].isin(rd.EM_CLASSIFICACAO)]["Nota"].dropna()
+    resumo = {"Inscrições": len(w),
+              "Estados": int(w["UF"].replace("", pd.NA).nunique()),
+              "Cidades": int(w["Local"].replace("", pd.NA).nunique()),
+              "Classificadas": int((w["Situação"] == "Classificada").sum()),
+              "Eliminadas": int((w["Status"] == "Eliminada").sum()),
+              "Nota média (em classificação)": f"{em.mean():.0f}" if len(em) else "—"}
+    _tabela(pdf, pd.DataFrame({"": list(resumo), "Total": [str(v) for v in resumo.values()]}), larguras=(120, 62))
+
+    # ---------------- 2. situação e notas
+    _secao(pdf, "Situação e notas")
+    sit = w["Situação"].value_counts()
+    _tabela(pdf, pd.DataFrame({"Situação": sit.index, "Inscrições": [int(v) for v in sit.values],
+                               "%": [rd._pct(v, len(w)) for v in sit.values]}), larguras=(100, 41, 41))
     if len(em):
-        fig, ax = plt.subplots(figsize=(8, 2.8))
+        fig, ax = plt.subplots(figsize=(8, 2.6))
         ax.hist(em, bins=range(0, 75, 5), color=ROXO, edgecolor="white")
-        ax.axvline(em.mean(), color=LARANJA, linewidth=1.5, label=f"média {em.mean():.1f}")
-        ax.axvline(em.median(), color=ROXO_ESCURO, linewidth=1.2, linestyle="--", label=f"mediana {em.median():.1f}")
-        ax.legend(fontsize=7, frameon=False)
         ax.set_xlabel("Nota", fontsize=8)
         ax.set_ylabel("Inscrições", fontsize=8)
-        ax.set_title("Distribuição das notas (em classificação), faixas de 5 pontos", fontsize=9,
-                     color=ROXO_ESCURO, loc="left")
+        ax.set_title("Distribuição das notas (em classificação)", fontsize=9, color=ROXO_ESCURO, loc="left")
         _eixo(ax)
-        _grafico(pdf, fig)
-    _sub(pdf, "Desempenho por bloco da régua (0 a 10 cada)")
-    tb = rd.tabela_blocos(w)
-    _tabela(pdf, tb, larguras=(62, 20, 22, 26, 28, 24))
-    if len(tb):
-        _grafico(pdf, _barras([b.split(" · ")[1] for b in tb["Bloco"]], list(tb["Média"]),
-                              "Média por bloco", horizontal=True, ylabel="Média (0 a 10)"), 58)
+        _grafico(pdf, fig, 55)
+    elim = rd.tabela_eliminacoes(w)
+    if len(elim):
+        _sub(pdf, "Motivos de eliminação")
+        _tabela(pdf, elim[["Motivo", "Inscrições"]], larguras=(146, 36))
 
-    # ---------------- 3. eliminatórias
-    _secao(pdf, "3. Eliminatórias")
-    _tabela(pdf, rd.tabela_eliminacoes(w), larguras=(100, 24, 29, 29))
-
-    # ---------------- 4. território
-    _secao(pdf, "4. Distribuição territorial")
-    _sub(pdf, "Por região")
-    treg = rd.tabela_territorio(w, "Região")
-    _tabela(pdf, treg, larguras=(44, 26, 26, 28, 30, 28))
-    _sub(pdf, "Por estado (UF)")
-    tuf = rd.tabela_territorio(w, "UF")
-    _tabela(pdf, tuf, larguras=(30, 28, 28, 30, 34, 32))
-    if len(tuf):
-        _grafico(pdf, _barras(list(tuf["UF"]), list(tuf["Inscrições"]), "Inscrições por estado"), 55)
-    _sub(pdf, "Municípios com mais inscrições (padronizados pelo IBGE)")
-    _tabela(pdf, rd.tabela_cidades(w), larguras=(110, 36, 36))
+    # ---------------- 3. onde estão
+    _secao(pdf, "Onde estão")
+    reg = w["Região"].value_counts().reindex([r for r in rd.ORDEM_REGIAO if r in set(w["Região"])])
+    _tabela(pdf, pd.DataFrame({"Região": reg.index, "Inscrições": [int(v) for v in reg.values],
+                               "%": [rd._pct(v, len(w)) for v in reg.values]}), larguras=(100, 41, 41))
+    uf = w["UF"].replace("", pd.NA).dropna().value_counts()
+    if len(uf):
+        _grafico(pdf, _barras(list(uf.index), [int(v) for v in uf.values], "Inscrições por estado"), 52)
+    _sub(pdf, "Cidades com mais inscrições")
+    _tabela(pdf, rd.tabela_cidades(w, top=10), larguras=(110, 36, 36))
     tenv = rd.tabela_envios(w)
     if len(tenv):
-        _sub(pdf, "Inscrições por dia de envio")
-        fig, ax = plt.subplots(figsize=(8, 2.6))
-        ax.bar([d.strftime("%d/%m") for d in tenv["Data"]], tenv["Inscrições"], color=ROXO)
-        ax2 = ax.twinx()
-        ax2.plot([d.strftime("%d/%m") for d in tenv["Data"]], tenv["Acumulado"], color=LARANJA, linewidth=1.5)
-        ax2.set_ylabel("Acumulado", fontsize=8, color=LARANJA)
-        ax2.tick_params(labelsize=7, colors=LARANJA)
-        ax.set_ylabel("Por dia", fontsize=8)
-        plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
-        _eixo(ax)
-        ax2.spines["top"].set_visible(False)
-        _grafico(pdf, fig, 52)
+        _grafico(pdf, _barras([d.strftime("%d/%m") for d in tenv["Data"]], list(tenv["Inscrições"]),
+                              "Inscrições por dia de envio"), 50)
 
-    # ---------------- 5. perfil
-    _secao(pdf, "5. Perfil das organizações")
-    for chave, titulo in [("p18", "Elaboração de projetos com incentivo — pergunta 21"),
-                          ("p19", "Execução de projetos com incentivo — pergunta 22")]:
-        _sub(pdf, titulo)
-        _tabela(pdf, rd.tabela_mecanismos(w, chave), larguras=(40, 36, 36, 34, 36))
+    # ---------------- 4. perfil
+    _secao(pdf, "Perfil das organizações")
+    for chave, titulo in [("p18", "Elaboração — nº de mecanismos que já escreveu"),
+                          ("p19", "Execução — nº de mecanismos que já executou")]:
+        t = rd.tabela_mecanismos(w, chave)
+        if len(t):
+            _sub(pdf, titulo)
+            _tabela(pdf, t[["Mecanismos", "Inscrições", "%"]], larguras=(100, 41, 41))
     for chave, titulo, ordem in rd.PERFIL:
         t = rd.tabela_perfil(w, chave, ordem)
         if len(t):
+            _sub(pdf, titulo.split(" — ")[0])
+            _tabela(pdf, t[["Resposta", "Inscrições", "%"]], larguras=(120, 31, 31))
+    for tab, titulo in [(rd.tabela_canais(w), "Canais digitais"), (rd.tabela_modalidades(w).head(10),
+                                                                    "Modalidades esportivas (10 mais citadas)")]:
+        if len(tab):
             _sub(pdf, titulo)
-            _tabela(pdf, t, larguras=(104, 26, 24, 28))
-    tc = rd.tabela_canais(w)
-    if len(tc):
-        _sub(pdf, "Canais digitais — pergunta 28")
-        _tabela(pdf, tc, larguras=(110, 36, 36))
-    tm = rd.tabela_modalidades(w)
-    if len(tm):
-        _sub(pdf, "Modalidades esportivas — pergunta 31")
-        _tabela(pdf, tm.head(20), larguras=(110, 36, 36))
+            _tabela(pdf, tab, larguras=(110, 36, 36))
 
-    # ---------------- 6. qualidade dos dados
-    _secao(pdf, "6. Qualidade dos dados (estado e cidade)")
-    _tabela(pdf, rd.tabela_qualidade(w), larguras=(50, 60, 36, 36))
-    tcor = rd.tabela_correcoes(w)
-    if len(tcor):
-        _sub(pdf, "Correções e pontos a conferir")
-        _tabela(pdf, tcor, larguras=(46, 40, 24, 56, 16), tam=7)
-
-    # ---------------- metodologia
-    _secao(pdf, "Nota metodológica")
-    _texto(pdf, rd.METODOLOGIA, 8)
+    pdf.ln(3)
+    _texto(pdf, "Estados e cidades padronizados pela lista oficial do IBGE (ex.: “BH” e “Belo Horisonte” "
+                "contam como Belo Horizonte/MG). Percentuais sobre as inscrições do recorte.", 8)
 
     return bytes(pdf.output())
