@@ -98,4 +98,4 @@ if "dados" not in st.session_state:
 dashboard.mostrar()
 ''', default_timeout=120).run()
     assert not at.exception, [e.value for e in at.exception]
-    assert len(at.dataframe) >= 5
+    assert len(at.metric) == 5 and not at.tabs  # uma página só, sem abas
