@@ -99,3 +99,13 @@ dashboard.mostrar()
 ''', default_timeout=120).run()
     assert not at.exception, [e.value for e in at.exception]
     assert len(at.metric) == 5 and not at.tabs  # uma página só, sem abas
+
+
+def test_opcao_com_virgula_entre_parenteses_conta_uma_vez_so():
+    w = pd.DataFrame({"modalidades": [
+        "Futebol / Futsal, Lutas / Artes Marciais (Judô, Karatê, Jiu-Jitsu, etc.), Capoeira",
+        "Lutas / Artes Marciais (Judô, Karatê, Jiu-Jitsu, etc.); Outro: Rugby"]})
+    t = rd.tabela_modalidades(w)
+    assert "Karatê" not in set(t["Modalidade"]) and "etc.)" not in set(t["Modalidade"])
+    lutas = t[t["Modalidade"].str.startswith("Lutas")]
+    assert len(lutas) == 1 and int(lutas["Inscrições"].iloc[0]) == 2
