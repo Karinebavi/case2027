@@ -113,3 +113,12 @@ def test_campo_de_confirmacao_nao_rouba_a_coluna_do_cnpj():
     assert chaves.index("cnpj_confirmacao") < chaves.index("cnpj")
     mapa = mapeamento.auto_map(["Confirme o CNPJ", "Nome da entidade", "CNPJ da entidade", "Cartão CNPJ (arquivo)"])
     assert mapa["cnpj_confirmacao"] == "Confirme o CNPJ" and mapa["cnpj"] == "CNPJ da entidade"
+
+
+def test_formulario_oficial_achado_pelo_nome_sem_form_id():
+    from regras import wix
+    forms = [("a", "CASE 2027 – Inscrição, Etapa 1 – Nova versão"), ("b", "Cópia de inscrições 2027"),
+             ("c", "Formulário de Inscrição Case 2026"), ("d", "Envio de Documentos v3"),
+             ("e", "Pesquisa de Satisfação CASE 2026")]
+    assert wix.form_pelo_nome(forms) == "a"
+    assert wix.form_pelo_nome(forms + [("f", "Inscrição 2027 (outra)")]) is None  # dois candidatos: não chuta

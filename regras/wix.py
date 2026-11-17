@@ -98,8 +98,40 @@ def listar_formularios(c=None):
     return [(f.get("id"), f.get("name") or "(sem nome)") for f in r.json().get("forms", [])]
 
 
+# O robô do GitHub tem o form_id nos Secrets dele; o sistema online pode não ter.
+# Quem tem o form_id guarda aqui no banco, e quem não tem usa o guardado.
+CHAVE_FORM = "config/wix_form_id"
+_NAO_E_O_OFICIAL = re.compile(r"c[oó]pia|copy|teste|rascunho|antig|2026|documento|upload|pesquisa")
+
+
+def _form_lembrado():
+    try:
+        from regras import nuvem
+        return (nuvem.ler(CHAVE_FORM) or "").strip() if nuvem.ativo() else ""
+    except Exception:
+        return ""
+
+
+def _lembrar_form(form_id):
+    try:
+        from regras import nuvem
+        if nuvem.ativo() and _form_lembrado() != form_id:
+            nuvem.gravar({CHAVE_FORM: form_id})
+    except Exception:
+        pass  # lembrar é só uma ajuda; nunca impede a busca
+
+
+def form_pelo_nome(forms):
+    """O formulário de inscrição de 2027 pelo nome, ignorando cópias, testes e os de 2026."""
+    cands = [fid for fid, nome in forms
+             if "inscri" in (nome or "").lower() and "2027" in (nome or "")
+             and not _NAO_E_O_OFICIAL.search((nome or "").lower())]
+    return cands[0] if len(cands) == 1 else None
+
+
 def _resolver_form_id(c):
     if c["form_id"]:
+        _lembrar_form(c["form_id"])
         return c["form_id"]
     forms = listar_formularios(c)
     if not forms:
@@ -109,6 +141,13 @@ def _resolver_form_id(c):
         for fid, nome in forms:
             if alvo in (nome or "").lower():
                 return fid
+    ids = {fid for fid, _ in forms}
+    lembrado = _form_lembrado()
+    if lembrado in ids:
+        return lembrado
+    pelo_nome = form_pelo_nome(forms)
+    if pelo_nome:
+        return pelo_nome
     if len(forms) == 1:
         return forms[0][0]
     lista = "; ".join(f"{nome} = {fid}" for fid, nome in forms)
