@@ -8,6 +8,7 @@ entidade, CNPJ ou contato: só contagens, percentuais e estatísticas.
 já padronizado (regras/localidade.py). Os filtros (`aplicar_filtros`) trabalham sobre
 essa base; tudo o que vem depois (tabelas, gráficos, PDF) usa o recorte filtrado.
 """
+import re
 from datetime import date
 
 import pandas as pd
@@ -252,7 +253,9 @@ def tabela_multipla(w, chave, rotulo, ignorar=()):
     cont, nomes = {}, {}
     for v in w[chave].astype(str):
         vistos = set()
-        for parte in v.replace(";", ",").split(","):
+        # vírgula/; separam as opções — menos dentro de parênteses:
+        # "Lutas / Artes Marciais (Judô, Karatê, Jiu-Jitsu, etc.)" é UMA opção só
+        for parte in re.split(r"[,;](?![^()]*\))", v):
             p = " ".join(parte.split())
             k = localidade.chave(p)
             if p and k not in vistos and p.lower() not in ignorar:
