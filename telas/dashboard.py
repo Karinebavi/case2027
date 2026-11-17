@@ -20,27 +20,95 @@ from regras import feedback, geo, pontuacao
 from regras import relatorio_dados as rd
 from telas import _calculo, _ui
 
-AZUL = tema.PRIMARIA_GRAF
-DOURADO = tema.SECUNDARIA_GRAF
-SEQ = tema.SEQ_CASE
+ROXO = tema.PRIMARIA_GRAF
+LARANJA = "#E07B12"          # laranja da marca, um tom mais forte (contraste com o fundo)
+TINTA, TINTA_SUAVE, GRADE = "#2B2540", "#6B6780", "#EEEAF6"
+# Respostas em ordem (menor -> maior): um só tom, do roxo claro ao escuro
+RAMPA = ["#D9C2FA", "#BB92F3", "#9F62EC", "#8434E0", "#6420B5", "#46138A"]
+# Respostas sem ordem (fatias): cores da marca conferidas para daltonismo (validador dataviz)
+CATEGORICAS = ["#9333EA", "#E07B12", "#1F9E89", "#C2410C", "#5B6BD6"]
 COR_SITUACAO = tema.SEMAFORO_FORTE
 _K = "rel_"  # prefixo das chaves dos filtros
 _CONTADOR = [0]
 
 
-def _fig(fig, altura=340):
-    fig.update_layout(height=altura, margin=dict(l=10, r=10, t=40, b=10),
-                      paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                      font=dict(size=13), legend=dict(orientation="h", y=-0.15))
+def _fig(fig, altura=340, maximo=None):
+    """Estilo único dos gráficos: fonte da marca, grade discreta, barras arredondadas,
+    eixo de contagem só com números inteiros e rótulos em português."""
+    fig.update_layout(
+        height=altura, margin=dict(l=8, r=8, t=28, b=8),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="Nunito Sans, sans-serif", size=13, color=TINTA),
+        legend=dict(orientation="h", y=-0.12, x=0, font=dict(size=12, color=TINTA_SUAVE)),
+        hoverlabel=dict(bgcolor="white", bordercolor=GRADE, font=dict(family="Nunito Sans", color=TINTA)),
+        bargap=0.28, barcornerradius=6, separators=",.",
+    )
+    eixo = dict(showline=False, zeroline=False, tickfont=dict(color=TINTA_SUAVE, size=12),
+                title_font=dict(color=TINTA_SUAVE, size=12))
+    fig.update_xaxes(**eixo, gridcolor=GRADE)
+    fig.update_yaxes(**eixo, gridcolor=GRADE)
+    if maximo is not None:  # contagens: 0, 1, 2... (nunca "1,5 inscrição") e folga para o rótulo
+        eixo_valor = dict(tickformat="d", rangemode="tozero", range=[0, maximo * 1.2 + 0.6])
+        if maximo <= 8:
+            eixo_valor["dtick"] = 1
+        if fig.data and getattr(fig.data[0], "orientation", None) == "h":
+            fig.update_xaxes(**eixo_valor, showgrid=True)
+            fig.update_yaxes(showgrid=False)
+        else:
+            fig.update_yaxes(**eixo_valor)
+            fig.update_xaxes(showgrid=False)
     _CONTADOR[0] += 1
     st.plotly_chart(fig, width="stretch", key=f"rel_g{_CONTADOR[0]}", config={"displayModeBar": False})
+
+
+def _barras(rotulos, valores, cor=None, horizontal=False, cores=None, titulo_valor="Inscrições",
+            altura=340, mostrar_pct=False):
+    """Barras com o número em cima (ou ao lado) e dica ao passar o mouse."""
+    rotulos, valores = list(rotulos), [int(v) for v in valores]
+    total = sum(valores) or 1
+    texto = [("" if not v else f"{v} ({100 * v / total:.0f}%)" if mostrar_pct else str(v)) for v in valores]
+    marcador = dict(color=cores or cor or ROXO, line=dict(width=0))
+    dica = "<b>%{y}</b> " if not horizontal else "<b>%{x}</b> "
+    eixo_cat = "%{x}" if not horizontal else "%{y}"
+    barra = go.Bar(x=valores if horizontal else rotulos, y=rotulos if horizontal else valores,
+                   orientation="h" if horizontal else "v", marker=marcador, text=texto,
+                   textposition="outside", cliponaxis=False, textfont=dict(color=TINTA, size=12),
+                   hovertemplate=eixo_cat + ": " + dica + titulo_valor.lower() + "<extra></extra>")
+    fig = go.Figure(barra)
+    if horizontal:
+        fig.update_layout(yaxis=dict(autorange="reversed", title="", type="category"),
+                          xaxis_title=titulo_valor, showlegend=False)
+    else:
+        fig.update_layout(xaxis=dict(title="", type="category"), yaxis_title=titulo_valor, showlegend=False)
+    _fig(fig, altura, maximo=max(valores) if valores else 1)
+
+
+def _rosca(rotulos, valores, cores, centro=None, altura=340):
+    """Rosca com o total no meio, número e % em cada fatia."""
+    fig = go.Figure(go.Pie(labels=list(rotulos), values=[int(v) for v in valores], hole=0.62, sort=False,
+                           marker=dict(colors=cores, line=dict(color="white", width=2)),
+                           textinfo="value+percent", textposition="outside", automargin=True,
+                           textfont=dict(color=TINTA, size=12),
+                           hovertemplate="%{label}: <b>%{value}</b> (%{percent})<extra></extra>"))
+    if centro:
+        fig.add_annotation(text=centro, showarrow=False, font=dict(size=15, color=tema.ROXO_ESCURO))
+    fig.update_layout(showlegend=True)
+    _fig(fig, altura)
+    # (as margens da rosca crescem sozinhas para o rótulo de fatia pequena não ser cortado)
+
+
+def _rampa(n):
+    """n tons de roxo, do claro ao escuro (para respostas em ordem: menor -> maior)."""
+    if n <= 1:
+        return [ROXO]
+    return [RAMPA[round(i * (len(RAMPA) - 1) / (n - 1))] for i in range(n)]
 
 
 def _contagem(serie, ordem=None):
     s = serie.astype(str).str.strip()
     c = s[s != ""].value_counts()
-    if ordem:
-        c = c.reindex([o for o in ordem if o in c.index]).dropna()
+    if ordem:  # na ordem da régua; respostas fora dela vêm no fim (nada some do gráfico)
+        c = c.reindex([o for o in ordem if o in c.index] + [o for o in c.index if o not in ordem])
     return c
 
 
@@ -157,21 +225,24 @@ def _kpis(work):
     c[4].metric("Nota média (em classificação)", f"{media:.0f}" if pd.notna(media) else "—")
 
 
+# Faixas de nota (de 0 a 70): mais claro = nota menor, mais escuro = nota maior
+FAIXAS_NOTA = [(0, 29, "Até 29"), (30, 39, "30 a 39"), (40, 49, "40 a 49"), (50, 59, "50 a 59"), (60, 70, "60 a 70")]
+
+
 def _situacao_e_notas(work):
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("Situação das inscrições")
-        cont = _contagem(work["Situação"])
-        fig = go.Figure(go.Pie(labels=cont.index, values=cont.values, hole=0.55, textinfo="label+value",
-                               marker=dict(colors=[COR_SITUACAO.get(s, "#888") for s in cont.index])))
-        _fig(fig)
+        cont = _contagem(work["Situação"], ["Classificada", "Fila de espera", "Eliminada"])
+        _rosca(cont.index, cont.values, [COR_SITUACAO.get(s, "#888") for s in cont.index],
+               centro=f"<b>{int(cont.sum())}</b><br>inscrições")
     with col2:
-        st.subheader("Distribuição das notas (em classificação)")
+        st.subheader("Notas (em classificação)")
         notas = work.loc[work["Situação"].isin(rd.EM_CLASSIFICACAO), "Nota"].dropna()
         if len(notas):
-            fig = px.histogram(x=notas, nbins=20, color_discrete_sequence=[AZUL])
-            fig.update_layout(xaxis_title="Nota", yaxis_title="Inscrições", showlegend=False)
-            _fig(fig)
+            qtd = [int(notas.between(a, b).sum()) for a, b, _ in FAIXAS_NOTA]
+            _barras([r for _, _, r in FAIXAS_NOTA], qtd, cores=_rampa(len(FAIXAS_NOTA)), mostrar_pct=True)
+            st.caption(f"Média {notas.mean():.0f} · mediana {notas.median():.0f} · de 0 a 70 pontos")
         else:
             st.caption("Sem inscrições em classificação.")
 
@@ -181,15 +252,11 @@ def _regioes(work):
     with col1:
         st.subheader("Inscrições por região")
         cont = _contagem(work["Região"], rd.ORDEM_REGIAO)
-        fig = px.bar(x=cont.values, y=cont.index, orientation="h", color=cont.index, color_discrete_sequence=SEQ)
-        fig.update_layout(xaxis_title="Inscrições", yaxis_title="", showlegend=False)
-        _fig(fig)
+        _barras(cont.index, cont.values, horizontal=True, mostrar_pct=True)
     with col2:
         st.subheader("Inscrições por estado")
         cont = _contagem(work["UF"]).sort_values(ascending=False)
-        fig = px.bar(x=cont.index, y=cont.values, color_discrete_sequence=[AZUL])
-        fig.update_layout(xaxis_title="", yaxis_title="Inscrições")
-        _fig(fig)
+        _barras(cont.index, cont.values)
 
 
 def _mapa(work):
@@ -203,12 +270,15 @@ def _mapa(work):
     dfu["Estado"] = dfu["UF"].map(geo.UF_NOME)
     dfu["Inscrições"] = dfu["UF"].map(cont).fillna(0).astype(int)
     fig = px.choropleth(dfu, geojson=gj, locations="UF", featureidkey="properties.sigla", color="Inscrições",
-                        color_continuous_scale=tema.ESCALA_ROXO, hover_name="Estado",
+                        color_continuous_scale=["#F4EEFD"] + RAMPA[1:], hover_name="Estado",
                         hover_data={"UF": False, "Inscrições": True})
     fig.update_geos(fitbounds="locations", visible=False, bgcolor="rgba(0,0,0,0)")
-    fig.update_traces(marker_line_color="#FFFFFF", marker_line_width=0.6)
+    fig.update_traces(marker_line_color="#FFFFFF", marker_line_width=0.8)
     fig.update_layout(height=560, margin=dict(l=0, r=0, t=10, b=0), paper_bgcolor="rgba(0,0,0,0)",
-                      coloraxis_colorbar=dict(title="Inscrições"), dragmode=False)
+                      font=dict(family="Nunito Sans, sans-serif", color=TINTA),
+                      coloraxis_colorbar=dict(title="Inscrições", thickness=12, len=0.6, tickformat="d",
+                                              dtick=1 if dfu["Inscrições"].max() <= 8 else None),
+                      dragmode=False)
     st.plotly_chart(fig, width="stretch", key="rel_mapa", config={"displayModeBar": False, "scrollZoom": False})
 
 
@@ -217,9 +287,7 @@ def _tempo_e_cidades(work):
     datas = pd.Series([d for d in work.get("_envio", []) if d is not None])
     if len(datas):
         pordia = datas.value_counts().sort_index()
-        fig = px.bar(x=pordia.index, y=pordia.values, color_discrete_sequence=[AZUL])
-        fig.update_layout(xaxis_title="Data de envio", yaxis_title="Inscrições")
-        _fig(fig, altura=300)
+        _barras([d.strftime("%d/%m") for d in pordia.index], pordia.values, altura=300)
     else:
         st.caption("Sem datas de envio reconhecidas.")
 
@@ -235,9 +303,7 @@ def _tempo_e_cidades(work):
         st.subheader("Cidades mais frequentes")
         cont = _contagem(work["Local"]).head(12)
         if len(cont):
-            fig = px.bar(x=cont.values, y=cont.index, orientation="h", color_discrete_sequence=[DOURADO])
-            fig.update_layout(xaxis_title="Inscrições", yaxis_title="", yaxis=dict(autorange="reversed"))
-            _fig(fig, altura=380)
+            _barras(cont.index, cont.values, cor=LARANJA, horizontal=True, altura=380)
         else:
             st.caption("Sem cidades.")
 
@@ -266,9 +332,7 @@ def _perfil_oscs(work):
         st.markdown("**Canais digitais**")
         t = rd.tabela_canais(work)
         if len(t):
-            fig = px.bar(t, x="Canal", y="Inscrições", color="Canal", color_discrete_sequence=SEQ)
-            fig.update_layout(xaxis_title="", showlegend=False)
-            _fig(fig)
+            _barras(t["Canal"], t["Inscrições"], horizontal=True, mostrar_pct=True)
         else:
             st.caption("Sem respostas.")
     with col8:
@@ -283,6 +347,11 @@ def _perfil_oscs(work):
         st.caption("Sem modalidades informadas.")
 
 
+def _curto(texto, n=38):
+    texto = str(texto)
+    return texto if len(texto) <= n else texto[: n - 1].rstrip() + "…"
+
+
 def _grafico_categorico(work, chave, titulo, ordem=None, tipo="bar", horizontal=False):
     st.markdown(f"**{titulo}**")
     if chave not in work.columns:
@@ -293,15 +362,10 @@ def _grafico_categorico(work, chave, titulo, ordem=None, tipo="bar", horizontal=
         st.caption("Sem respostas.")
         return
     if tipo == "pie":
-        fig = go.Figure(go.Pie(labels=cont.index, values=cont.values, hole=0.4, marker=dict(colors=SEQ),
-                               textinfo="percent+value"))
-    elif horizontal:
-        fig = px.bar(x=cont.values, y=cont.index, orientation="h", color_discrete_sequence=[AZUL])
-        fig.update_layout(xaxis_title="Entidades", yaxis_title="", yaxis=dict(autorange="reversed"))
-    else:
-        fig = px.bar(x=cont.index, y=cont.values, color_discrete_sequence=[AZUL])
-        fig.update_layout(xaxis_title="", yaxis_title="Entidades")
-    _fig(fig)
+        _rosca([_curto(i) for i in cont.index], cont.values, (CATEGORICAS * 2)[: len(cont)])
+    else:  # respostas em ordem (equipe, receita): tons de roxo do menor ao maior
+        _barras([_curto(i) for i in cont.index], cont.values, cores=_rampa(len(cont)),
+                horizontal=horizontal, titulo_valor="Entidades", mostrar_pct=True)
 
 
 def _grafico_mecanismos(work, chave, titulo):
@@ -310,9 +374,9 @@ def _grafico_mecanismos(work, chave, titulo):
     if not len(t):
         st.caption("Sem respostas.")
         return
-    fig = px.bar(t, x="Mecanismos", y="Inscrições", color_discrete_sequence=[DOURADO])
-    fig.update_layout(xaxis_title="Nº de mecanismos", yaxis_title="Entidades")
-    _fig(fig)
+    nomes = {"0": "Nenhum", "1": "1 mecanismo", "2": "2 mecanismos", "3 ou mais": "3 ou mais"}
+    _barras([nomes.get(m, m) for m in t["Mecanismos"]], t["Inscrições"], cor=LARANJA,
+            titulo_valor="Entidades", mostrar_pct=True)
 
 
 def _cidades_corrigidas(work):
@@ -364,7 +428,11 @@ def _wordcloud(freqs):
     if not freqs:
         return None
     from wordcloud import WordCloud
-    wc = WordCloud(width=900, height=360, background_color="white", colormap="Purples",
-                   prefer_horizontal=0.9, collocations=False)
+    tons = RAMPA[2:] + [LARANJA]  # só tons fortes: nenhuma palavra some no fundo branco
+
+    def _cor(palavra, **_):
+        return tons[sum(map(ord, palavra)) % len(tons)]
+    wc = WordCloud(width=900, height=360, background_color="white", color_func=_cor,
+                   prefer_horizontal=0.9, collocations=False, font_step=2)
     wc.generate_from_frequencies(freqs)
     return wc.to_array()
