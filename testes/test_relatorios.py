@@ -77,7 +77,9 @@ def test_pdf_sai_sem_nomes_de_entidade():
     import pdfplumber
     with pdfplumber.open(io.BytesIO(pdf)) as doc:
         texto = " ".join(p.extract_text() or "" for p in doc.pages)
-    assert "Belo Horizonte/MG" in texto
+    assert "Mapa do Brasil" in texto and "Nuvem de cidades" in texto  # gráficos em imagem
+    with pdfplumber.open(io.BytesIO(pdf)) as doc:
+        assert sum(len(p.images) for p in doc.pages) >= 8
     for nome in w["nome_entidade"]:
         assert nome not in texto  # relatório só com números agregados
 
