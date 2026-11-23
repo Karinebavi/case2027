@@ -32,6 +32,7 @@ TINTA, TINTA_SUAVE, GRADE = "#2B2540", "#6B6780", "#EEEAF6"
 RAMPA = ["#D9C2FA", "#BB92F3", "#9F62EC", "#8434E0", "#6420B5", "#46138A"]
 CATEGORICAS = ["#9333EA", "#E07B12", "#1F9E89", "#C2410C", "#5B6BD6"]
 COR_SITUACAO = {"Classificada": "#2E7D32", "Fila de espera": "#C99A2E", "Eliminada": "#B84A4A"}
+FAIXAS_NOTA = [(0, 29, "Até 29"), (30, 39, "30 a 39"), (40, 49, "40 a 49"), (50, 59, "50 a 59"), (60, 70, "60 a 70")]
 _FONTES = os.path.join(matplotlib.get_data_path(), "fonts", "ttf")
 _MAPA = os.path.join(os.path.dirname(os.path.dirname(__file__)), "base", "brasil_uf.geojson")
 
@@ -303,24 +304,31 @@ def gerar(w, filtros_txt, total_base):
                    new_x="LMARGIN", new_y="NEXT")
     pdf.ln(3)
 
+    # os mesmos quadradinhos e gráficos do topo da tela Relatórios
+    notas = w.loc[w["Situação"].isin(rd.EM_CLASSIFICACAO), "Nota"].dropna()
     _indicadores(pdf, [("Inscrições", len(w)),
                        ("Estados", int(w["UF"].replace("", pd.NA).nunique())),
                        ("Cidades", int(w["Local"].replace("", pd.NA).nunique())),
                        ("Classificadas", int((w["Situação"] == "Classificada").sum())),
-                       ("Eliminadas", int((w["Status"] == "Eliminada").sum()))])
+                       ("Nota média", f"{notas.mean():.0f}" if len(notas) else "—")])
 
     sit = _contagem(w["Situação"], list(COR_SITUACAO))
-    reg = _contagem(w["Região"], rd.ORDEM_REGIAO)
+    faixas = [int(notas.between(a, b).sum()) for a, b, _ in FAIXAS_NOTA]
+    titulo_notas = "Notas (em classificação)"
+    if len(notas):  # título curto para caber em meia página
+        titulo_notas = f"Notas · média {notas.mean():.0f} · mediana {notas.median():.0f}"
     _imagens(pdf, [("Situação das inscrições",
                     _rosca(sit.index, sit.values, [COR_SITUACAO.get(s, "#888") for s in sit.index],
                            centro=f"{int(sit.sum())}\ninscrições")),
-                   ("Inscrições por região", _barras(reg.index, reg.values, horizontal=True, pct=True))], 55)
+                   (titulo_notas, _barras([r for _, _, r in FAIXAS_NOTA], faixas, cores=_rampa(len(FAIXAS_NOTA)),
+                                          pct=True) if len(notas) else None)], 58)
 
+    reg = _contagem(w["Região"], rd.ORDEM_REGIAO)
     datas = pd.Series([d for d in w.get("_envio", []) if d is not None])
-    if len(datas):
-        pordia = datas.value_counts().sort_index()
-        _imagens(pdf, [("Dias com mais inscrições", _barras([d.strftime("%d/%m") for d in pordia.index],
-                                                            pordia.values, tamanho=(9, 2.6)))], 46)
+    pordia = datas.value_counts().sort_index() if len(datas) else pd.Series(dtype=int)
+    _imagens(pdf, [("Inscrições por região", _barras(reg.index, reg.values, horizontal=True, pct=True)),
+                   ("Dias com mais inscrições", _barras([d.strftime("%d/%m") for d in pordia.index], pordia.values)
+                    if len(pordia) else None)], 55)
 
     # onde estão
     _secao(pdf, "Onde estão", 140)  # o título vai junto com o mapa para a página seguinte
