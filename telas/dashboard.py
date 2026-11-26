@@ -339,11 +339,18 @@ def _perfil_oscs(work):
         if "p20_lie" in work.columns and (work["p20_lie"].astype(str).str.strip() != "").any():
             _grafico_categorico(work, "p20_lie", "Situação na Lei de Incentivo (LIE)", tipo="pie")
     st.markdown("**Modalidades esportivas**")
-    t = rd.tabela_modalidades(work).head(15)
+    todas = rd.tabela_modalidades(work)
+    t = todas.head(15)
     if len(t):
-        _barras([_curto(m, 45) for m in t["Modalidade"]], t["Inscrições"], horizontal=True,
-                titulo_valor="Entidades", altura=max(260, 36 * len(t) + 80))
-        st.caption("Cada entidade pode marcar mais de uma modalidade; o % é sobre o total de entidades.")
+        col1, col2 = st.columns([3, 2])
+        with col1:
+            _barras([_curto(m, 45) for m in t["Modalidade"]], t["Inscrições"], horizontal=True,
+                    titulo_valor="Entidades", altura=max(260, 36 * len(t) + 80))
+        with col2:
+            arr = _wordcloud(dict(zip(todas["Modalidade"], todas["Inscrições"])))
+            if arr is not None:
+                st.image(arr, width="stretch")
+        st.caption("Cada entidade pode marcar mais de uma modalidade.")
     else:
         st.caption("Sem modalidades informadas.")
 
