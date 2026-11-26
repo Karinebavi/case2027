@@ -122,3 +122,13 @@ def test_formulario_oficial_achado_pelo_nome_sem_form_id():
              ("e", "Pesquisa de Satisfação CASE 2026")]
     assert wix.form_pelo_nome(forms) == "a"
     assert wix.form_pelo_nome(forms + [("f", "Inscrição 2027 (outra)")]) is None  # dois candidatos: não chuta
+
+
+def test_email_de_cnpj_pronto_sem_citar_outra_instituicao():
+    from regras import contato
+    corpo = contato.modelo_cnpj("Associação Esportiva Exemplo", "11.222.333/0001-81", cnpj.ST_OUTRA,
+                                "Maria Exemplo")
+    assert corpo.startswith("Olá, Maria!") and "11.222.333/0001-81" in corpo
+    assert "outra instituição" in corpo and "Cartão CNPJ" in corpo
+    link = contato.link_email(["a@exemplo.org"], contato.ASSUNTO_CNPJ, corpo)
+    assert link.startswith("mailto:a@exemplo.org?subject=") and "body=" in link

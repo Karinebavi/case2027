@@ -298,6 +298,47 @@ def painel_cnpj():
                     cnpj.manter(k, nuvem.quem())
                     st.session_state.pop("_cnpj_diags", None)
                     st.rerun()
+                _avisar_cnpj(k, linha, d, diags)
+
+
+def _avisar_cnpj(k, linha, d, diags):
+    """E-mail pronto para pedir à entidade o CNPJ certo. Abre no programa de e-mail de
+    quem clicar (mailto) — o sistema não envia nada sozinho."""
+    from regras import cnpj, contato
+    nome = str(linha.get("nome_entidade") or "sua organização").strip()
+    emails = []
+    for campo in ("email", "email_institucional"):
+        e = str(linha.get(campo) or "").strip()
+        if "@" in e and e.lower() not in [x.lower() for x in emails]:
+            emails.append(e)
+    st.divider()
+    st.markdown("**Avisar a entidade por e-mail**")
+    if d.get("avisada_em"):
+        st.caption(f"Aviso marcado como enviado em {d['avisada_em']} por {d.get('avisada_por', '—')}.")
+    if not emails:
+        st.caption("A inscrição não tem e-mail. Use o WhatsApp do responsável, na tela Selecionadas.")
+        return
+    para = st.multiselect("Para", emails, default=emails, key=f"cnpj_para_{k}")
+    assunto = st.text_input("Assunto", contato.ASSUNTO_CNPJ, key=f"cnpj_assunto_{k}")
+    corpo = st.text_area("Mensagem (pode editar antes de abrir)", key=f"cnpj_corpo_{k}", height=300,
+                         value=contato.modelo_cnpj(nome, cnpj.formatar(d.get("digitado")) or d.get("digitado"),
+                                                   d.get("status"), str(linha.get("responsavel") or "")))
+    b = st.columns(2)
+    link = contato.link_email(para, assunto, corpo)
+    if link:
+        b[0].link_button("Abrir no e-mail", link, icon=":material/mail:", width="stretch",
+                         help="Abre o e-mail pronto no seu programa de e-mail (Outlook, Gmail…). "
+                              "Você confere e clica em Enviar lá.")
+    if b[1].button("Marcar como avisada", icon=":material/mark_email_read:", key=f"cnpj_avisada_{k}",
+                   width="stretch"):
+        import datetime as dt
+        quando = dt.datetime.now().strftime("%d/%m/%Y %H:%M")
+        diags[k] = {**diags.get(k, d), "avisada_em": quando, "avisada_por": nuvem.quem()}
+        cnpj.salvar_diagnosticos(diags)
+        nuvem.registrar("avisar_cnpj", {"inscricao": k, "status": d.get("status")})
+        st.session_state["_cnpj_diags"] = diags
+        st.toast("Anotado: a entidade foi avisada.")
+        st.rerun()
 
 
 def _sincronizar_wix():

@@ -89,3 +89,31 @@ def modelo_nao_selecionada(nome):
         "Seguimos à disposição e desejamos sucesso na sua jornada.\n\n"
         f"{ASSINATURA}"
     )
+
+
+# CNPJ digitado com problema (tela Inscrições -> "CNPJs a conferir")
+ASSUNTO_CNPJ = "CASE 2027 — confirmação do CNPJ da sua inscrição"
+_MOTIVO_CNPJ = {
+    "invalido": "o número informado não corresponde a um CNPJ válido (os dígitos finais não conferem)",
+    "formato": "o número informado não tem os 14 dígitos de um CNPJ",
+    "outra_entidade": "o número informado está registrado na Receita Federal em nome de outra instituição",
+    "confirmacao_diferente": "o CNPJ informado no campo de confirmação é diferente do CNPJ informado na inscrição",
+}
+
+
+def modelo_cnpj(nome, digitado, status, responsavel=""):
+    """Pede à entidade que confirme o CNPJ. Não cita o nome de outra instituição
+    (quando o número é de outra, diz só isso)."""
+    saudacao = f"Olá, {responsavel.split()[0]}!" if str(responsavel).strip() else f"Olá, equipe da {nome}!"
+    motivo = _MOTIVO_CNPJ.get(status, "não conseguimos confirmar o CNPJ informado")
+    return (
+        f"{saudacao}\n\n"
+        f"Recebemos a inscrição da {nome} no CASE 2027 — obrigado pela participação!\n\n"
+        f"Ao conferir os dados, vimos que {motivo}:\n\n"
+        f"CNPJ informado: {digitado or '—'}\n\n"
+        "Para seguirmos com a sua inscrição, pedimos que responda a este e-mail com:\n"
+        "- o CNPJ correto da organização; e\n"
+        "- o Cartão CNPJ atualizado (pode ser o PDF emitido no site da Receita Federal).\n\n"
+        "Não é preciso fazer uma nova inscrição: nós corrigimos aqui.\n\n"
+        f"{ASSINATURA}"
+    )
