@@ -238,6 +238,11 @@ def conferir_base(base, estado=None, so_novas=True, diags=None):
                                 confirmacao=linha.get("cnpj_confirmacao"),
                                 cnpj_cartao=(lido.get("cartao") or {}).get("cnpj"))
         diags[k]["nome"] = str(linha.get("nome_entidade") or "")
+        # conferir de novo não apaga o aviso à entidade nem o que está sendo esperado
+        if atual and atual.get("digitado") == dig:
+            for campo in ("avisada_em", "avisada_por", "espera"):
+                if atual.get(campo):
+                    diags[k][campo] = atual[campo]
     return diags
 
 

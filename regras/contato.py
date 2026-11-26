@@ -117,3 +117,17 @@ def modelo_cnpj(nome, digitado, status, responsavel=""):
         "Não é preciso fazer uma nova inscrição: nós corrigimos aqui.\n\n"
         f"{ASSINATURA}"
     )
+
+
+def link_outlook(destinatarios, assunto="", corpo=""):
+    """Abre o Outlook (Microsoft 365, no navegador) com o e-mail já montado — é só
+    clicar em Enviar. Funciona igual no sistema online e no computador, sem depender
+    de qual programa de e-mail o Windows usa como padrão (o mailto depende)."""
+    if isinstance(destinatarios, str):
+        destinatarios = [destinatarios]
+    dest = [d.strip() for d in destinatarios if d and "@" in str(d)]
+    if not dest:
+        return ""
+    params = {"to": ",".join(dest), "subject": assunto, "body": corpo}
+    return ("https://outlook.office.com/mail/deeplink/compose?"
+            + urllib.parse.urlencode({k: v for k, v in params.items() if v}, quote_via=urllib.parse.quote))
