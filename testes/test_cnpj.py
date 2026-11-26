@@ -122,3 +122,32 @@ def test_formulario_oficial_achado_pelo_nome_sem_form_id():
              ("e", "Pesquisa de Satisfação CASE 2026")]
     assert wix.form_pelo_nome(forms) == "a"
     assert wix.form_pelo_nome(forms + [("f", "Inscrição 2027 (outra)")]) is None  # dois candidatos: não chuta
+
+
+def test_email_de_cnpj_pronto_sem_citar_outra_instituicao():
+    from regras import contato
+    corpo = contato.modelo_cnpj("Associação Esportiva Exemplo", "11.222.333/0001-81", cnpj.ST_OUTRA,
+                                "Maria Exemplo")
+    assert corpo.startswith("Olá, Maria!") and "11.222.333/0001-81" in corpo
+    assert "outra instituição" in corpo and "Cartão CNPJ" in corpo
+    link = contato.link_email(["a@exemplo.org"], contato.ASSUNTO_CNPJ, corpo)
+    assert link.startswith("mailto:a@exemplo.org?subject=") and "body=" in link
+
+
+def test_link_do_outlook_ja_vem_preenchido():
+    from regras import contato
+    link = contato.link_outlook(["a@exemplo.org", "b@exemplo.org"], "Assunto teste", "Linha 1\nLinha 2")
+    assert link.startswith("https://outlook.office.com/mail/deeplink/compose?to=a%40exemplo.org%2Cb%40exemplo.org")
+    assert "subject=Assunto%20teste" in link and "body=Linha%201%0ALinha%202" in link
+    assert contato.link_outlook(["sem-arroba"]) == ""
+
+
+def test_conferir_de_novo_nao_apaga_o_aviso(monkeypatch):
+    import pandas as pd
+    errado = _troca(CERTO, 9)
+    base = pd.DataFrame({"id_envio": ["x1"], "cnpj": [errado], "nome_entidade": [NOME]})
+    monkeypatch.setattr(cnpj, "_consultar_padrao", lambda c: None)
+    diags = {"x1": {"digitado": errado, "status": cnpj.ST_INVALIDO, "avisada_em": "26/11/2026 10:00",
+                    "avisada_por": "equipe", "espera": "nova_inscricao"}}
+    novo = cnpj.conferir_base(base, so_novas=False, diags=diags)
+    assert novo["x1"]["espera"] == "nova_inscricao" and novo["x1"]["avisada_em"] == "26/11/2026 10:00"

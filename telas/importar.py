@@ -262,7 +262,11 @@ def painel_cnpj():
             st.rerun()
         for k, linha, d in itens:
             nome = str(linha.get("nome_entidade") or "—")
-            with st.expander(f"{nome} · {cnpj.ROTULO.get(d['status'], d['status'])}", expanded=len(itens) <= 3):
+            espera = ESPERAS.get(d.get("espera"))
+            titulo = f"{nome} · {cnpj.ROTULO.get(d['status'], d['status'])}"
+            if espera:
+                titulo += f" · {espera.lower()} (avisada em {str(d.get('avisada_em', ''))[:5]})"
+            with st.expander(titulo, expanded=len(itens) <= 3):
                 st.markdown(f"Digitado: **{cnpj.formatar(d.get('digitado')) or '—'}** · {d.get('detalhe', '')}")
                 opcoes = {}
                 for s in d.get("sugestoes") or []:
@@ -298,6 +302,78 @@ def painel_cnpj():
                     cnpj.manter(k, nuvem.quem())
                     st.session_state.pop("_cnpj_diags", None)
                     st.rerun()
+                _avisar_cnpj(k, linha, d, diags, base)
+
+
+# Depois de avisar a entidade, o que fica esperando
+ESPERAS = {"resposta": "Aguardando resposta do e-mail", "nova_inscricao": "Aguardando nova inscrição"}
+
+
+def _nova_inscricao_parecida(k, linha, base):
+    """Outra inscrição (não esta) com nome parecido — a entidade pode ter se inscrito de novo."""
+    from regras import cnpj
+    nome = str(linha.get("nome_entidade") or "")
+    achadas = []
+    for _, outra in base.iterrows():
+        if cnpj._chave(outra) == k:
+            continue
+        if cnpj.semelhanca(nome, outra.get("nome_entidade")) >= cnpj.LIMIAR_NOME:
+            achadas.append(outra)
+    return achadas
+
+
+def _avisar_cnpj(k, linha, d, diags, base):
+    """E-mail pronto para pedir à entidade o CNPJ certo. Abre no programa de e-mail de
+    quem clicar (mailto) — o sistema não envia nada sozinho."""
+    from regras import cnpj, contato
+    nome = str(linha.get("nome_entidade") or "sua organização").strip()
+    emails = []
+    for campo in ("email", "email_institucional"):
+        e = str(linha.get(campo) or "").strip()
+        if "@" in e and e.lower() not in [x.lower() for x in emails]:
+            emails.append(e)
+    st.divider()
+    st.markdown("**Avisar a entidade por e-mail**")
+    if d.get("avisada_em"):
+        st.caption(f"Avisada em {d['avisada_em']} por {d.get('avisada_por', '—')} · "
+                   f"{ESPERAS.get(d.get('espera'), 'aviso enviado')}.")
+    if d.get("espera") == "nova_inscricao":
+        for outra in _nova_inscricao_parecida(k, linha, base):
+            st.success(f"Chegou uma inscrição com nome parecido: **{outra.get('nome_entidade')}** · CNPJ "
+                       f"{cnpj.formatar(outra.get('cnpj')) or outra.get('cnpj')} · enviada em "
+                       f"{str(outra.get('data_envio') or '—')[:10]}. Confira e, se for a mesma entidade, "
+                       "clique em “Está certo, manter” aqui para tirar esta da lista.",
+                       icon=":material/mark_email_unread:")
+    if not emails:
+        st.caption("A inscrição não tem e-mail. Use o WhatsApp do responsável, na tela Selecionadas.")
+        return
+    para = st.multiselect("Para", emails, default=emails, key=f"cnpj_para_{k}")
+    assunto = st.text_input("Assunto", contato.ASSUNTO_CNPJ, key=f"cnpj_assunto_{k}")
+    corpo = st.text_area("Mensagem (pode editar antes de abrir)", key=f"cnpj_corpo_{k}", height=300,
+                         value=contato.modelo_cnpj(nome, cnpj.formatar(d.get("digitado")) or d.get("digitado"),
+                                                   d.get("status"), str(linha.get("responsavel") or "")))
+    b = st.columns(2)
+    outlook = contato.link_outlook(para, assunto, corpo)
+    if outlook:
+        b[0].link_button("Abrir no Outlook", outlook, icon=":material/send:", type="primary", width="stretch",
+                         help="Abre o Outlook com o e-mail pronto (destinatário, assunto e mensagem). "
+                              "É só conferir e clicar em Enviar.")
+        b[0].caption("Usa outro programa? [Abrir no e-mail padrão do computador]("
+                     + contato.link_email(para, assunto, corpo) + ")")
+    with b[1]:
+        espera = st.radio("Depois de enviar", list(ESPERAS), format_func=ESPERAS.get, key=f"cnpj_espera_{k}",
+                          index=list(ESPERAS).index(d["espera"]) if d.get("espera") in ESPERAS else 0,
+                          label_visibility="collapsed")
+        if st.button("Marcar como avisada", icon=":material/mark_email_read:", key=f"cnpj_avisada_{k}",
+                     width="stretch"):
+            import datetime as dt
+            quando = dt.datetime.now().strftime("%d/%m/%Y %H:%M")
+            diags[k] = {**diags.get(k, d), "avisada_em": quando, "avisada_por": nuvem.quem(), "espera": espera}
+            cnpj.salvar_diagnosticos(diags)
+            nuvem.registrar("avisar_cnpj", {"inscricao": k, "status": d.get("status"), "espera": espera})
+            st.session_state["_cnpj_diags"] = diags
+            st.toast(f"Anotado: {ESPERAS[espera].lower()}.")
+            st.rerun()
 
 
 def _sincronizar_wix():
@@ -353,7 +429,8 @@ def _painel_base(base):
     c = st.columns(3)
     c[0].metric("Inscrições na base", n)
     c[1].metric("Novas na última importação", len(novos))
-    ufs = base["uf"].nunique() if "uf" in base.columns else 0
+    from regras import localidade  # "MG", "Minas Gerais" e "minas" contam como um estado só
+    ufs = base["uf"].map(lambda v: localidade.uf(v)["uf"]).replace("", None).nunique() if "uf" in base.columns else 0
     c[2].metric("Estados representados", ufs)
 
     st.caption("Veja as notas e o ranking na etapa Ranking.")
