@@ -355,11 +355,15 @@ def _avisar_cnpj(k, linha, d, diags, base):
     b = st.columns(2)
     outlook = contato.link_outlook(para, assunto, corpo)
     if outlook:
-        b[0].link_button("Abrir no Outlook", outlook, icon=":material/send:", type="primary", width="stretch",
-                         help="Abre o Outlook com o e-mail pronto (destinatário, assunto e mensagem). "
-                              "É só conferir e clicar em Enviar.")
-        b[0].caption("Usa outro programa? [Abrir no e-mail padrão do computador]("
-                     + contato.link_email(para, assunto, corpo) + ")")
+        with b[0]:
+            st.link_button("Outlook (programa)", contato.link_email(para, assunto, corpo), icon=":material/send:",
+                           type="primary", width="stretch",
+                           help="Abre o Outlook instalado no computador com o e-mail pronto. "
+                                "É só conferir e clicar em Enviar.")
+            st.link_button("Outlook (navegador)", outlook, icon=":material/language:", width="stretch",
+                           help="Abre o Outlook na internet com o e-mail pronto.")
+            st.caption("No navegador: se abrir a caixa de entrada em vez do e-mail novo, é porque pediu login "
+                       "— clique de novo que abre pronto.")
     with b[1]:
         espera = st.radio("Depois de enviar", list(ESPERAS), format_func=ESPERAS.get, key=f"cnpj_espera_{k}",
                           index=list(ESPERAS).index(d["espera"]) if d.get("espera") in ESPERAS else 0,
