@@ -13,7 +13,7 @@ import unicodedata
 from datetime import datetime, date
 import pandas as pd
 
-from regras import localidade
+from regras import anteriores, localidade
 
 # Mecanismos incentivados contados nas perguntas de elaboração/execução.
 TOKENS = ["Esporte", "Cultura", "Infância", "Idoso", "PRONAS", "PRONON", "Emenda"]
@@ -231,6 +231,7 @@ def detalhar(dados, mapa, cnpj):
 def calcular(dados, mapa, hoje=None):
     """Devolve um DataFrame com a nota de cada bloco, o total e o status."""
     ref = hoje or date.today()
+    ja_participaram = anteriores.carregar()  # lista do banco (vazia sem banco/testes)
     linhas = []
     for _, row in dados.iterrows():
         def g(chave):  # usada só nesta volta do laço
@@ -262,6 +263,10 @@ def calcular(dados, mapa, hoje=None):
                 motivos.append(f"{texto.split('.')[0]}. não respondida")
             elif not resposta.startswith("sim"):
                 eliminacao.append(texto)
+        # Quem já participou do CASE em outro ano não é classificado de novo (27/11/2026)
+        participou = anteriores.conferir(g("cnpj"), g("nome_entidade"), ja_participaram)
+        if participou:
+            eliminacao.append(participou)
         if e_empresa(g("nome_entidade")):
             eliminacao.append("Empresa (Ltda/ME/EIRELI), não é organização sem fins lucrativos")
         abertura = parse_data(g("data_fundacao"))

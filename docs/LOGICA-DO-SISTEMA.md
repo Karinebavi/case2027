@@ -45,7 +45,10 @@ Inscrições (Wix)
   estatuto, mandato em vigor, estatuto e ata registrados, computador com câmera e
   microfone, internet, 2h por semana) eliminam quem não responder "Sim". CNPJ aberto
   **depois de 01/03/2026** também elimina, e **empresa** também (nome com Ltda, EIRELI,
-  ou ME/EPP/MEI/S.A. no fim — o CASE é para organizações sem fins lucrativos). A eliminada **continua visível** no Ranking,
+  ou ME/EPP/MEI/S.A. no fim — o CASE é para organizações sem fins lucrativos), e **quem já
+  participou do CASE em outro ano** (decisão de 27/11/2026): lista no banco, chave
+  `config/participantes_anteriores` (fora do código, que é público), reconhecida pelo CNPJ igual
+  ou pelo nome praticamente igual (≥ 90%); dá para acrescentar organizações na tela Inscrições. A eliminada **continua visível** no Ranking,
   com a nota e o motivo, mas **sem posição e fora da Fase 2**. Pergunta em branco não
   elimina: vira aviso.
 - **Uma lista só (Ranking):** nota, situação (Classificada / Fila de espera /
