@@ -36,6 +36,7 @@ def mostrar():
     atualizacao_automatica()
     painel_cnpj()
     painel_ja_participaram()
+    painel_areas_vale()
 
     with st.expander("Outras formas de trazer inscrições (CSV ou outro formulário)"):
         arquivo = st.file_uploader("Arquivo CSV das inscrições", type=["csv"], key="upload_csv")
@@ -254,6 +255,39 @@ def painel_ja_participaram():
             st.cache_data.clear()
             st.toast(f"{len(lista) - antes} organização(ões) nova(s) na lista; {len(novos)} lida(s).")
             st.rerun()
+
+
+def painel_areas_vale():
+    """Cidades de atuação da Vale: as organizações delas ganham destaque no Ranking e na planilha."""
+    from regras import areas
+    if not nuvem.ativo():
+        return
+    lista = areas.carregar()
+    with st.expander(f"Áreas da Vale · {len(lista)} cidades (destaque no Ranking e na planilha)",
+                     icon=":material/location_city:"):
+        st.caption("Só destaque: não muda nota nem posição. No Ranking, a coluna Vale fica em laranja e o "
+                   "botão “Áreas Vale” mostra só elas.")
+        if lista:
+            ufs = sorted({x["uf"] for x in lista})
+            for uf in ufs:
+                cidades = sorted(x["cidade"] for x in lista if x["uf"] == uf)
+                st.markdown(f"**{uf}** ({len(cidades)}): " + ", ".join(cidades))
+        colado = st.text_area("Acrescentar cidades (uma por linha, como “Cidade/UF”, ou a UF numa linha e as "
+                              "cidades embaixo)", key="vale_colar", height=110)
+        if st.button("Acrescentar à lista", icon=":material/playlist_add:", key="vale_add",
+                     disabled=not colado.strip()):
+            novos, nao = areas.ler_colado(colado)
+            antes = len(lista)
+            lista = areas.juntar(lista, novos)
+            areas.salvar(lista, {"acrescentadas": len(lista) - antes})
+            st.cache_data.clear()
+            st.toast(f"{len(lista) - antes} cidade(s) nova(s) na lista.")
+            if nao:
+                st.session_state["_vale_nao"] = nao
+            st.rerun()
+        if st.session_state.get("_vale_nao"):
+            st.warning("Não reconheci: " + ", ".join(st.session_state.pop("_vale_nao"))
+                       + ". Confira o nome e a UF.")
 
 
 def painel_cnpj():

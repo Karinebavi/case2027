@@ -21,6 +21,7 @@ _MARCADO = {"sim", "s", "x", "1", "true", "verdadeiro", "ok", "interesse"}
 _COLUNAS = [
     ("Posição", "Posição"),
     ("Entidade", "Entidade"),
+    ("Área Vale", "_vale"),
     ("CNPJ", "CNPJ"),
     ("Cidade", "Cidade"),
     ("UF", "UF"),
@@ -38,7 +39,7 @@ _COLUNAS = [
     ("Motivo / observação", "Motivo"),
 ]
 # Índice (1-based) das colunas que formam a memória de cálculo (blocos + total)
-_COLS_MEMORIA = list(range(7, 15))  # Nota(total) + b1..b7
+_COLS_MEMORIA = list(range(8, 16))  # Nota(total) + b1..b7
 
 
 def montar_planilha(df, vagas):
@@ -46,6 +47,9 @@ def montar_planilha(df, vagas):
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
     base = df.sort_values(["Nota", "Entidade"], ascending=[False, True]).copy()
+    vale = base["Área Vale"].fillna(False).astype(bool) if "Área Vale" in base.columns \
+        else pd.Series(False, index=base.index)
+    base["_vale"] = vale.map(lambda x: "Sim" if x else "")
     tabela = pd.DataFrame(
         {rot: (base[col].values if col in base.columns else "") for rot, col in _COLUNAS}
     )
@@ -77,7 +81,8 @@ def montar_planilha(df, vagas):
 
         # Destaque das 10 primeiras (dentro das vagas)
         verde = PatternFill("solid", fgColor="E4F1E8")
-        col_pos = 1
+        laranja = PatternFill("solid", fgColor="FFE8CC")  # áreas de atuação da Vale
+        col_pos, col_vale = 1, 3
         for i in range(len(tabela)):
             linha = i + 3  # dados começam na linha 3
             try:
@@ -92,8 +97,12 @@ def montar_planilha(df, vagas):
                     cel.fill = verde
                     if c == col_pos:
                         cel.font = Font(bold=True, color="1B5E20")
+            if tabela.iloc[i]["Área Vale"] == "Sim":  # Vale: entidade e coluna Vale em laranja
+                for c in (2, col_vale):
+                    ws.cell(row=linha, column=c).fill = laranja
+                ws.cell(row=linha, column=col_vale).font = Font(bold=True, color="9A4A00")
 
-        larguras = [9, 32, 20, 16, 5, 14, 11, 11, 10, 9, 9, 10, 10, 8, 12, 16, 40, 18]
+        larguras = [9, 32, 10, 20, 16, 5, 14, 11, 11, 10, 9, 9, 10, 10, 8, 12, 16, 40, 18]
         for idx, w in enumerate(larguras[:n_col], start=1):
             ws.column_dimensions[ws.cell(row=2, column=idx).column_letter].width = w
         ws.freeze_panes = "A3"
