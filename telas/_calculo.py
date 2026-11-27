@@ -16,13 +16,16 @@ _RELER_A_CADA = 30
 
 
 @st.cache_data(show_spinner=False)
-def _pontuar(dados, mapa):
+def _pontuar(dados, mapa, versao_anteriores=""):  # sem "_": o Streamlit precisa olhar este valor
     return pontuacao.calcular(dados, mapa)
 
 
 def processar(dados, mapa, vagas):
     """Devolve o DataFrame com nota, posição e situação de cada inscrição."""
-    scored = _pontuar(dados, mapa)
+    from regras import anteriores
+    # a lista de quem já participou entra na chave do cache: mudou a lista, refaz a conta
+    versao = json.dumps(anteriores.carregar(), sort_keys=True, ensure_ascii=False)
+    scored = _pontuar(dados, mapa, versao)
     return classificacao.classificar(scored, vagas)
 
 

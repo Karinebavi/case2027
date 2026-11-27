@@ -35,6 +35,7 @@ def mostrar():
 
     atualizacao_automatica()
     painel_cnpj()
+    painel_ja_participaram()
 
     with st.expander("Outras formas de trazer inscrições (CSV ou outro formulário)"):
         arquivo = st.file_uploader("Arquivo CSV das inscrições", type=["csv"], key="upload_csv")
@@ -222,6 +223,36 @@ def atualizacao_automatica():
                 st.toast(f"{r.get('novas', 0)} inscrição(ões) nova(s).")
             else:
                 st.toast(f"Não consegui atualizar: {r.get('erro')}")
+            st.rerun()
+
+
+def painel_ja_participaram():
+    """Quem já participou do CASE em outros anos: eliminado na Etapa 1. A lista fica no banco."""
+    from regras import anteriores, cnpj
+    if not nuvem.ativo():
+        return
+    lista = anteriores.carregar()
+    with st.expander(f"Já participaram do CASE · {len(lista)} organizações (são eliminadas)",
+                     icon=":material/history:"):
+        st.caption("Quem está nesta lista não é classificado: vira Eliminada no Ranking, com o motivo. "
+                   "Reconhece pelo CNPJ igual ou pelo nome praticamente igual.")
+        if lista:
+            st.dataframe(pd.DataFrame({"Organização": [x.get("nome") for x in lista],
+                                       "CNPJ": [cnpj.formatar(x.get("cnpj")) or x.get("cnpj") or "—" for x in lista],
+                                       "De onde": [", ".join(x.get("fontes") or []) for x in lista]}),
+                         hide_index=True, width="stretch", height=260)
+        colado = st.text_area("Acrescentar (uma por linha: Nome e CNPJ, como na planilha)", key="anteriores_colar",
+                              placeholder="ASSOCIAÇÃO EXEMPLO	00.000.000/0000-00", height=120)
+        c = st.columns([2, 1], vertical_alignment="bottom")
+        fonte = c[0].text_input("De qual edição?", "edições anteriores", key="anteriores_fonte")
+        if c[1].button("Acrescentar à lista", icon=":material/playlist_add:", width="stretch",
+                       disabled=not colado.strip()):
+            novos = anteriores.ler_colado(colado, fonte.strip() or "edições anteriores")
+            antes = len(lista)
+            lista = anteriores.juntar(lista, novos)
+            anteriores.salvar(lista, nuvem.quem(), {"acrescentadas": len(lista) - antes})
+            st.cache_data.clear()
+            st.toast(f"{len(lista) - antes} organização(ões) nova(s) na lista; {len(novos)} lida(s).")
             st.rerun()
 
 
