@@ -52,6 +52,10 @@ Inscrições (Wix)
   Eliminada), uma coluna **Problemas** com tudo o que há para conferir (eliminatórias,
   CNPJ inválido ou repetido, campo em branco, avisos) e **todas as respostas** do
   formulário. Clicando numa linha, a ficha; em duas ou mais, a comparação lado a lado.
+- **Respostas que não combinam (27/11/2026):** marcou a Lei de Incentivo ao Esporte na
+  21 ou na 22, mas respondeu "Ainda não tenho projeto na LIE" na 23. Não muda a nota:
+  vira aviso na coluna Problemas e entra na lista "Respostas que não combinam" do
+  Ranking, com e-mail pronto pedindo confirmação ou nova inscrição (vale a mais recente).
 - O filtro dos documentos e da diretoria de verdade é a Fase 2 (documental).
 
 ### FASE 2 — Conferência documental  ·  *tela 3 (Documental)*
