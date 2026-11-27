@@ -262,10 +262,8 @@ def painel_cnpj():
             st.rerun()
         for k, linha, d in itens:
             nome = str(linha.get("nome_entidade") or "—")
-            espera = ESPERAS.get(d.get("espera"))
-            titulo = f"{nome} · {cnpj.ROTULO.get(d['status'], d['status'])}"
-            if espera:
-                titulo += f" · {espera.lower()} (avisada em {str(d.get('avisada_em', ''))[:5]})"
+            from telas import _aviso
+            titulo = f"{nome} · {cnpj.ROTULO.get(d['status'], d['status'])}" + _aviso.titulo_espera(d)
             with st.expander(titulo, expanded=len(itens) <= 3):
                 st.markdown(f"Digitado: **{cnpj.formatar(d.get('digitado')) or '—'}** · {d.get('detalhe', '')}")
                 opcoes = {}
@@ -305,10 +303,6 @@ def painel_cnpj():
                 _avisar_cnpj(k, linha, d, diags, base)
 
 
-# Depois de avisar a entidade, o que fica esperando
-ESPERAS = {"resposta": "Aguardando resposta do e-mail", "nova_inscricao": "Aguardando nova inscrição"}
-
-
 def _nova_inscricao_parecida(k, linha, base):
     """Outra inscrição (não esta) com nome parecido — a entidade pode ter se inscrito de novo."""
     from regras import cnpj
@@ -323,20 +317,9 @@ def _nova_inscricao_parecida(k, linha, base):
 
 
 def _avisar_cnpj(k, linha, d, diags, base):
-    """E-mail pronto para pedir à entidade o CNPJ certo. Abre no programa de e-mail de
-    quem clicar (mailto) — o sistema não envia nada sozinho."""
+    """E-mail pronto para pedir à entidade o CNPJ certo (caixa de telas/_aviso.py)."""
     from regras import cnpj, contato
-    nome = str(linha.get("nome_entidade") or "sua organização").strip()
-    emails = []
-    for campo in ("email", "email_institucional"):
-        e = str(linha.get(campo) or "").strip()
-        if "@" in e and e.lower() not in [x.lower() for x in emails]:
-            emails.append(e)
-    st.divider()
-    st.markdown("**Avisar a entidade por e-mail**")
-    if d.get("avisada_em"):
-        st.caption(f"Avisada em {d['avisada_em']} por {d.get('avisada_por', '—')} · "
-                   f"{ESPERAS.get(d.get('espera'), 'aviso enviado')}.")
+    from telas import _aviso
     if d.get("espera") == "nova_inscricao":
         for outra in _nova_inscricao_parecida(k, linha, base):
             st.success(f"Chegou uma inscrição com nome parecido: **{outra.get('nome_entidade')}** · CNPJ "
@@ -344,40 +327,17 @@ def _avisar_cnpj(k, linha, d, diags, base):
                        f"{str(outra.get('data_envio') or '—')[:10]}. Confira e, se for a mesma entidade, "
                        "clique em “Está certo, manter” aqui para tirar esta da lista.",
                        icon=":material/mark_email_unread:")
-    if not emails:
-        st.caption("A inscrição não tem e-mail. Use o WhatsApp do responsável, na tela Selecionadas.")
-        return
-    para = st.multiselect("Para", emails, default=emails, key=f"cnpj_para_{k}")
-    assunto = st.text_input("Assunto", contato.ASSUNTO_CNPJ, key=f"cnpj_assunto_{k}")
-    corpo = st.text_area("Mensagem (pode editar antes de abrir)", key=f"cnpj_corpo_{k}", height=300,
-                         value=contato.modelo_cnpj(nome, cnpj.formatar(d.get("digitado")) or d.get("digitado"),
-                                                   d.get("status"), str(linha.get("responsavel") or "")))
-    b = st.columns(2)
-    outlook = contato.link_outlook(para, assunto, corpo)
-    if outlook:
-        with b[0]:
-            st.link_button("Outlook (programa)", contato.link_email(para, assunto, corpo), icon=":material/send:",
-                           type="primary", width="stretch",
-                           help="Abre o Outlook instalado no computador com o e-mail pronto. "
-                                "É só conferir e clicar em Enviar.")
-            st.link_button("Outlook (navegador)", outlook, icon=":material/language:", width="stretch",
-                           help="Abre o Outlook na internet com o e-mail pronto.")
-            st.caption("No navegador: se abrir a caixa de entrada em vez do e-mail novo, é porque pediu login "
-                       "— clique de novo que abre pronto.")
-    with b[1]:
-        espera = st.radio("Depois de enviar", list(ESPERAS), format_func=ESPERAS.get, key=f"cnpj_espera_{k}",
-                          index=list(ESPERAS).index(d["espera"]) if d.get("espera") in ESPERAS else 0,
-                          label_visibility="collapsed")
-        if st.button("Marcar como avisada", icon=":material/mark_email_read:", key=f"cnpj_avisada_{k}",
-                     width="stretch"):
-            import datetime as dt
-            quando = dt.datetime.now().strftime("%d/%m/%Y %H:%M")
-            diags[k] = {**diags.get(k, d), "avisada_em": quando, "avisada_por": nuvem.quem(), "espera": espera}
-            cnpj.salvar_diagnosticos(diags)
-            nuvem.registrar("avisar_cnpj", {"inscricao": k, "status": d.get("status"), "espera": espera})
-            st.session_state["_cnpj_diags"] = diags
-            st.toast(f"Anotado: {ESPERAS[espera].lower()}.")
-            st.rerun()
+    nome = str(linha.get("nome_entidade") or "sua organização").strip()
+    corpo = contato.modelo_cnpj(nome, cnpj.formatar(d.get("digitado")) or d.get("digitado"), d.get("status"),
+                                str(linha.get("responsavel") or ""))
+
+    def marcar(aviso):
+        diags[k] = {**diags.get(k, d), **aviso}
+        cnpj.salvar_diagnosticos(diags)
+        nuvem.registrar("avisar_cnpj", {"inscricao": k, "status": d.get("status"), "espera": aviso["espera"]})
+        st.session_state["_cnpj_diags"] = diags
+
+    _aviso.caixa_email(f"cnpj_{k}", linha, contato.ASSUNTO_CNPJ, corpo, d, marcar)
 
 
 def _sincronizar_wix():

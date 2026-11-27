@@ -17,7 +17,7 @@ import streamlit as st
 
 from base import campos as campos_def
 from telas import _calculo, _ui
-from regras import validacao, exportacao
+from regras import coerencia, validacao, exportacao
 import tema
 from regras import pontuacao
 from regras.memoria import so_digitos
@@ -55,6 +55,38 @@ def _col_pontos(chave):
     return f"{campos_def.NUMERO_FORMULARIO[chave]} · pontos"
 
 
+def _respostas_que_nao_combinam(dados):
+    """21/22 marcam a Lei de Incentivo ao Esporte e a 23 diz "Ainda não tenho projeto na LIE":
+    a equipe escolhe a organização e manda o e-mail pedindo confirmação (ou nova inscrição)."""
+    from regras import avisos, contato
+    from regras.cnpj import _chave
+    from telas import _aviso
+    itens = [(_chave(r), r) for _, r in dados.iterrows() if coerencia.checar(r)]
+    if not itens:
+        return
+    feitos = avisos.carregar("coerencia_lie")
+    pendentes = sum(1 for k, _ in itens if not (feitos.get(k) or {}).get("avisada_em"))
+    titulo = f"Respostas que não combinam (21/22 × 23) · {len(itens)}"
+    if pendentes:
+        titulo += f" · {pendentes} sem aviso"
+    with st.expander(titulo, icon=":material/rule:"):
+        st.caption("Marcaram a Lei de Incentivo ao Esporte na pergunta 21 ou 22, mas na 23 responderam "
+                   "“Ainda não tenho projeto na LIE”. Não muda a nota: peça para confirmarem e, se marcaram "
+                   "errado, para refazerem a inscrição (vale a mais recente).")
+        rotulos = {k: f"{str(r.get('nome_entidade') or '—').strip()}{_aviso.titulo_espera(feitos.get(k))}"
+                   for k, r in itens}
+        k = st.selectbox("Organização", list(rotulos), format_func=rotulos.get, key="coerencia_org")
+        linha = dict(itens)[k]
+        perguntas = coerencia.perguntas_marcadas(linha)
+        for n, chave in (("21", "p18"), ("22", "p19"), ("23", "p20_lie")):
+            st.markdown(f"**{n}.** {str(linha.get(chave) or '—').strip()}")
+        nome = str(linha.get("nome_entidade") or "sua organização").strip()
+        corpo = contato.modelo_coerencia_lie(nome, perguntas, str(linha.get("p20_lie") or ""),
+                                             str(linha.get("responsavel") or ""), coerencia.LINK_FORMULARIO)
+        _aviso.caixa_email(f"coer_{k}", linha, contato.ASSUNTO_COERENCIA, corpo, feitos.get(k),
+                           lambda aviso, k=k: avisos.marcar("coerencia_lie", k, aviso))
+
+
 def mostrar():
     _ui.cabecalho(2, "Todas as organizações numa lista só: nota, situação, problemas e todas as respostas. "
                      "Clique numa linha para a ficha; em duas ou mais, para comparar.")
@@ -76,7 +108,10 @@ def mostrar():
     # Problemas numa coluna só: eliminatórias e avisos (Motivo) + pendências da base
     v = validacao.validar(dados, mapa)
     da_base = {so_digitos(c): p for c, p in zip(v["pendencias"]["CNPJ"], v["pendencias"]["Problema"])}
-    f["Problemas"] = [" · ".join(x for x in [str(m or "").strip(), da_base.get(d, "")] if x)
+    # + respostas que não combinam (21/22 marcam a LIE e a 23 diz "ainda não tenho projeto")
+    nao_combina = {so_digitos(r.get("cnpj", "")): coerencia.checar(r) for _, r in dados.iterrows()}
+    f["Problemas"] = [" · ".join(x for x in [str(m or "").strip(), da_base.get(d, ""),
+                                             "; ".join(nao_combina.get(d) or [])] if x)
                       for m, d in zip(f["Motivo"], f["dig"])]
     eliminada = f["Status"] == "Eliminada"
 
@@ -91,7 +126,8 @@ def mostrar():
                      "(Regulamento 8.1). Ficam visíveis, sem posição e fora da Fase 2.")
     c[3].metric("Com problema", int(((f["Problemas"] != "") & ~eliminada).sum()),
                 help="Não eliminadas, mas com algo a conferir: CNPJ inválido ou repetido, campo em branco, "
-                     "pergunta não respondida.")
+                     "pergunta não respondida, respostas que não combinam.")
+    _respostas_que_nao_combinam(dados)
 
     # ----------------------- controles -----------------------
     with st.container(horizontal=True, vertical_alignment="bottom", gap="small"):

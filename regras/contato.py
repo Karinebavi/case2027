@@ -131,3 +131,27 @@ def link_outlook(destinatarios, assunto="", corpo=""):
     params = {"to": ",".join(dest), "subject": assunto, "body": corpo}
     return ("https://outlook.office.com/mail/deeplink/compose?"
             + urllib.parse.urlencode({k: v for k, v in params.items() if v}, quote_via=urllib.parse.quote))
+
+
+# Respostas que não combinam: 21/22 marcam a LIE e a 23 diz "Ainda não tenho projeto na LIE"
+ASSUNTO_COERENCIA = "CASE 2027 — confirmação de respostas da sua inscrição"
+
+
+def modelo_coerencia_lie(nome, perguntas, resposta_23, responsavel="",
+                         link="https://www.case.org.br/inscricoes2027"):
+    saudacao = f"Olá, {responsavel.split()[0]}!" if str(responsavel).strip() else f"Olá, equipe da {nome}!"
+    qual = {"21": "na pergunta 21 (projetos que a organização já escreveu)",
+            "22": "na pergunta 22 (projetos que a organização já executou)"}
+    onde = " e ".join(qual[p] for p in perguntas if p in qual) or "nas perguntas 21/22"
+    return (
+        f"{saudacao}\n\n"
+        f"Recebemos a inscrição da {nome} no CASE 2027 — obrigado pela participação!\n\n"
+        "Ao conferir as respostas, notamos duas informações que não combinam:\n"
+        f"- {onde[0].upper() + onde[1:]}, foi marcada a Lei de Incentivo ao Esporte;\n"
+        f"- na pergunta 23 (situação na Lei de Incentivo ao Esporte), a resposta foi “{resposta_23.strip()}”.\n\n"
+        "Quem já elaborou ou executou projeto pela Lei de Incentivo ao Esporte normalmente tem, pelo menos, "
+        "cadastro no sistema da Lei ou projeto submetido.\n\n"
+        "Pode nos confirmar qual é a situação correta? Se alguma resposta foi marcada por engano, por favor "
+        f"refaça a inscrição pelo link abaixo — vale a inscrição mais recente:\n{link}\n\n"
+        f"{ASSINATURA}"
+    )
