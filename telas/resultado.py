@@ -133,7 +133,8 @@ def mostrar():
     with st.container(horizontal=True, vertical_alignment="bottom", gap="small"):
         busca = st.text_input("Buscar entidade", placeholder="digite parte do nome", width=260,
                               icon=":material/search:")
-        ver = st.segmented_control("Ver", ["Todas", "Fase 2", "Com problema", "Eliminadas"], default="Todas",
+        ver = st.segmented_control("Ver", ["Todas", "Fase 2", "Áreas Vale", "Com problema", "Eliminadas"],
+                                   default="Todas",
                                    key="ranking_ver") or "Todas"
         todas_resp = st.toggle("Respostas e pontos", value=True, key="ranking_respostas",
                                help="Todas as respostas, na numeração do formulário, com os pontos ao lado "
@@ -168,12 +169,16 @@ def mostrar():
         vista = vista[vista["Cidade"].isin(cidades)]
     if ver == "Fase 2":
         vista = vista[vista["em_pool"]]
+    elif ver == "Áreas Vale":
+        vista = vista[vista["Área Vale"].fillna(False).astype(bool)]
     elif ver == "Com problema":
         vista = vista[(vista["Problemas"] != "") & (vista["Status"] != "Eliminada")]
     elif ver == "Eliminadas":
         vista = vista[vista["Status"] == "Eliminada"]
 
-    st.caption(f"{len(vista)} de {total} inscrições. As {pool_size} melhores não eliminadas (Fase 2 = Sim, em "
+    n_vale = int(f["Área Vale"].fillna(False).astype(bool).sum()) if "Área Vale" in f.columns else 0
+    st.caption(f"{len(vista)} de {total} inscrições · {n_vale} em áreas da Vale (coluna Vale, em laranja). "
+               f"As {pool_size} melhores não eliminadas (Fase 2 = Sim, em "
                "lilás) vão aos documentos. A coluna Problemas junta tudo o que há para conferir. Clique numa "
                "linha para a ficha; marque duas ou mais para comparar.")
 
@@ -194,7 +199,9 @@ def mostrar():
                                            for d in disp["dig"]]
             disp[rotulo] = disp["dig"].map(lambda d, k=chave: str((por_dig.get(d) or {}).get(k, "") or "").strip())
             resp_cols.append(rotulo)
-    colunas =["Posição", "Entidade", "Nota", "Situação", "Fase 2", "Problemas", "Cidade", "UF", "Anos"] + resp_cols
+    disp["Vale"] = disp["Área Vale"].fillna(False).astype(bool).map(lambda x: "Vale" if x else "")
+    colunas = ["Posição", "Entidade", "Vale", "Nota", "Situação", "Fase 2", "Problemas", "Cidade", "UF",
+               "Anos"] + resp_cols
     disp = disp[colunas].rename(columns={"Anos": "Tempo (anos)"})
     # Eliminada não tem posição: mostra "—". Texto com espaços à esquerda para a ordem
     # continuar certa ao clicar no título (" 2" vem antes de "10"; "—" vai para o fim).
@@ -213,7 +220,11 @@ def mostrar():
         marcas = nao_reconhecida.get(col.name, [False] * len(col))
         return [f"background-color:{vermelho[0]};color:{vermelho[1]}" if m else "" for m in marcas]
 
+    def _cor_vale(val):  # áreas de atuação da Vale: laranja da marca
+        return "background-color:#FFE8CC;color:#9A4A00;font-weight:700" if val == "Vale" else ""
+
     estilo = disp.style.map(_cor_sit, subset=["Situação"]).map(_cor_pool, subset=["Fase 2"]) \
+        .map(_cor_vale, subset=["Vale"]) \
         .format({"Tempo (anos)": "{:.1f}"}, na_rep="")
     if nao_reconhecida:
         estilo = estilo.apply(_cor_nao_reconhecida, subset=list(nao_reconhecida))
@@ -222,6 +233,9 @@ def mostrar():
                                                help="Eliminadas não têm posição (—)."),
         "Entidade": st.column_config.TextColumn("Entidade", width="large", pinned=True),
         "Nota": st.column_config.ProgressColumn("Nota", min_value=0, max_value=70, format="%d", width="small"),
+        "Vale": st.column_config.TextColumn("Vale", width="small", pinned=True,
+                                            help="Organização numa cidade de atuação da Vale (só destaque; "
+                                                 "não muda nota nem posição)."),
         "Fase 2": st.column_config.TextColumn("Fase 2", width="small"),
         "Problemas": st.column_config.TextColumn("Problemas", width="large",
                                                  help="Eliminatórias, CNPJ, campos em branco e avisos — tudo junto."),

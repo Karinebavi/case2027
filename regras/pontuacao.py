@@ -13,7 +13,7 @@ import unicodedata
 from datetime import datetime, date
 import pandas as pd
 
-from regras import anteriores, localidade
+from regras import anteriores, areas, localidade
 
 # Mecanismos incentivados contados nas perguntas de elaboração/execução.
 TOKENS = ["Esporte", "Cultura", "Infância", "Idoso", "PRONAS", "PRONON", "Emenda"]
@@ -232,6 +232,7 @@ def calcular(dados, mapa, hoje=None):
     """Devolve um DataFrame com a nota de cada bloco, o total e o status."""
     ref = hoje or date.today()
     ja_participaram = anteriores.carregar()  # lista do banco (vazia sem banco/testes)
+    areas_vale = areas.carregar()            # cidades da Vale: só destaque, não muda a nota
     linhas = []
     for _, row in dados.iterrows():
         def g(chave):  # usada só nesta volta do laço
@@ -287,6 +288,7 @@ def calcular(dados, mapa, hoje=None):
             "Cidade": loc["cidade"] or _txt(g("cidade")).strip(),
             "UF": loc["uf"] or _txt(g("uf")).strip(),
             "Região": loc["regiao"] or "(não identificada)",
+            "Área Vale": areas.e_area(loc["cidade"], loc["uf"], areas_vale),
             "b1": b1, "b2": b2, "b3": b3, "b4": b4, "b5": b5, "b6": b6, "b7": b7,
             "Nota": total,
             "Status": status,
